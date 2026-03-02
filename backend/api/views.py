@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime
 import secrets
 import re
 from django.core.mail import send_mail
@@ -43,10 +44,12 @@ def signup(request):
         return Response({'error': 'An account with this email already exists.'}, status=status.HTTP_409_CONFLICT)
 
     users.insert_one({
-        'name': name,
-        'email': email,
-        'password': hash_password(password),
-    })
+    'name': name,
+    'email': email,
+    'password': hash_password(password),
+    'created_at': datetime.utcnow(),
+    'updated_at': datetime.utcnow(),
+})
 
     return Response({'message': f'Account created successfully! Welcome, {name}.'}, status=status.HTTP_201_CREATED)
 
@@ -103,9 +106,14 @@ def forgot_password(request):
     new_password = secrets.token_urlsafe(10)
 
     users.update_one(
-        {'email': email},
-        {'$set': {'password': hash_password(new_password)}}
-    )
+    {'email': email},
+    {
+        '$set': {
+            'password': hash_password(new_password),
+            'updated_at': datetime.utcnow()
+        }
+    }
+)
 
     # Send email
     try:
