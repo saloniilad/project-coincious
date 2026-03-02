@@ -15,3 +15,6 @@ def get_db():
 
 def get_users_collection():
     return get_db()['users']
+
+def get_currency_collection():
+    return get_db()['currency']
