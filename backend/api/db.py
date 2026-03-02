@@ -18,3 +18,6 @@ def get_users_collection():
 
 def get_currency_collection():
     return get_db()['currency']
+
+def get_progress_collection():
+    return get_db()['progress']

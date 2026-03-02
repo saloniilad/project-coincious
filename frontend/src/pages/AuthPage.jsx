@@ -17,6 +17,21 @@ export default function AuthPage() {
     const [forgotLoading, setForgotLoading] = useState(false);
     const [forgotMsg, setForgotMsg] = useState("");
 
+    // After login: pull progress from backend into localStorage
+    const syncProgressFromBackend = async (name) => {
+        try {
+            const res = await fetch(`${API_BASE}/progress/load/?name=${encodeURIComponent(name)}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const progress = data.progress || {};
+            Object.entries(progress).forEach(([key, value]) => {
+                localStorage.setItem(key, value);
+            });
+        } catch {
+            // Non-critical — silently ignore
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
@@ -40,6 +55,10 @@ export default function AuthPage() {
                 if (!res.ok) throw new Error(data.error || "Login failed");
 
                 localStorage.setItem("user", data.user.name);
+                localStorage.setItem("email", data.user.email);
+
+                await syncProgressFromBackend(data.user.name);
+
                 navigate("/home", { replace: true });
 
             } else {
