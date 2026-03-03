@@ -21,7 +21,7 @@ export default function Currency() {
 
         {/* Study Module Card */}
         <div
-          onClick={() => alert("Go to Study Module")}
+          onClick={() => navigate("/study")}
           className="cursor-pointer bg-blue-50 border border-blue-200 rounded-2xl p-8 shadow hover:shadow-lg transition flex justify-between items-center"
         >
           <div>
@@ -39,7 +39,7 @@ export default function Currency() {
 
         {/* Identification Game Card */}
         <div
-          onClick={() => alert("Go to Game")}
+          onClick={() => navigate("/identification")}
           className="cursor-pointer bg-green-50 border border-green-200 rounded-2xl p-8 shadow hover:shadow-lg transition flex justify-between items-center"
         >
           <div>
