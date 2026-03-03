@@ -21,3 +21,6 @@ def get_currency_collection():
 
 def get_progress_collection():
     return get_db()['progress']
+
+def get_otp_collection():
+    return get_db()['otps']
