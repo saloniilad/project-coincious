@@ -7,7 +7,8 @@ from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from .db import get_users_collection, get_progress_collection, get_otp_collection
+# AFTER
+from .db import get_users_collection, get_currency_collection, get_progress_collection, get_otp_collection, get_identification_attempts_collection
 
 
 def hash_password(password: str) -> str:
@@ -327,3 +328,177 @@ def verify_otp_and_change_password(request):
     otp_col.delete_one({'name': name})
 
     return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
+
+
+# ── Identification Game ───────────────────────────────────────────────────────
+
+from bson import ObjectId
+
+@api_view(['POST'])
+def save_identification_attempt(request):
+    """
+    POST /api/identification/attempt/
+    Body: {
+        "name": "...",
+        "currency_value": 10,
+        "currency_type": "coin",
+        "selected_jar_value": 20,
+        "is_correct": false
+    }
+    Looks up the real currency ObjectId, then saves the attempt.
+    """
+    data = request.data
+    name             = data.get('name', '').strip()
+    currency_value   = data.get('currency_value')
+    currency_type    = data.get('currency_type', '').strip().lower()
+    selected_jar_value = data.get('selected_jar_value')
+    is_correct       = data.get('is_correct')
+
+    if not name or currency_value is None or not currency_type or selected_jar_value is None or is_correct is None:
+        return Response(
+            {'error': 'name, currency_value, currency_type, selected_jar_value, and is_correct are required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Resolve user
+    users = get_users_collection()
+    user = users.find_one({'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}})
+    if not user:
+        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Resolve currency — matches the seeded documents exactly
+    currency_col = get_currency_collection()
+    currency = currency_col.find_one({'value': int(currency_value), 'type': currency_type})
+    if not currency:
+        return Response({'error': f'Currency {currency_value} {currency_type} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    attempts_col = get_identification_attempts_collection()
+    attempts_col.insert_one({
+        'user_id':            user['_id'],        # ObjectId FK → users
+        'currency_id':        currency['_id'],    # ObjectId FK → currency
+        'selected_jar_value': int(selected_jar_value),
+        'is_correct':         bool(is_correct),
+        'attempts_count':     1,
+        'created_at':         datetime.utcnow(),
+    })
+
+    return Response({'message': 'Attempt saved.'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+def get_identification_stats(request):
+    """
+    GET /api/identification/stats/?name=...
+    Returns per-currency stats (with value + type resolved) and overall totals.
+    """
+    name = request.query_params.get('name', '').strip()
+    if not name:
+        return Response({'error': 'Name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    users = get_users_collection()
+    user = users.find_one({'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}})
+    if not user:
+        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    attempts_col = get_identification_attempts_collection()
+
+    pipeline = [
+        {'$match': {'user_id': user['_id']}},
+
+        # Group by currency_id
+        {'$group': {
+            '_id':              '$currency_id',
+            'total_attempts':   {'$sum': 1},
+            'correct_attempts': {'$sum': {'$cond': ['$is_correct', 1, 0]}},
+        }},
+
+        # Join currency collection to get value + type
+        {'$lookup': {
+            'from':         'currency',
+            'localField':   '_id',
+            'foreignField': '_id',
+            'as':           'currency_info',
+        }},
+        {'$unwind': {'path': '$currency_info', 'preserveNullAndEmptyArrays': True}},
+
+        {'$project': {
+            'currency_id':      {'$toString': '$_id'},
+            'value':            '$currency_info.value',
+            'type':             '$currency_info.type',
+            'total_attempts':   1,
+            'correct_attempts': 1,
+            'accuracy': {
+                '$cond': [
+                    {'$eq': ['$total_attempts', 0]}, 0,
+                    {'$multiply': [
+                        {'$divide': ['$correct_attempts', '$total_attempts']}, 100
+                    ]}
+                ]
+            },
+            '_id': 0,
+        }}
+    ]
+
+    per_currency = list(attempts_col.aggregate(pipeline))
+
+    total   = sum(c['total_attempts']   for c in per_currency)
+    correct = sum(c['correct_attempts'] for c in per_currency)
+
+    return Response({
+        'per_currency': per_currency,
+        'overall': {
+            'total_attempts':   total,
+            'correct_attempts': correct,
+            'accuracy':         round((correct / total * 100) if total else 0, 1),
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def get_identification_history(request):
+    """
+    GET /api/identification/history/?name=...&limit=20
+    Returns recent attempts with currency value + type resolved via $lookup.
+    """
+    name  = request.query_params.get('name', '').strip()
+    limit = int(request.query_params.get('limit', 20))
+
+    if not name:
+        return Response({'error': 'Name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    users = get_users_collection()
+    user = users.find_one({'name': {'$regex': f'^{re.escape(name)}$', '$options': 'i'}})
+    if not user:
+        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    attempts_col = get_identification_attempts_collection()
+
+    pipeline = [
+        {'$match': {'user_id': user['_id']}},
+        {'$sort':  {'created_at': -1}},
+        {'$limit': limit},
+
+        # Resolve currency details
+        {'$lookup': {
+            'from':         'currency',
+            'localField':   'currency_id',
+            'foreignField': '_id',
+            'as':           'currency_info',
+        }},
+        {'$unwind': {'path': '$currency_info', 'preserveNullAndEmptyArrays': True}},
+
+        {'$project': {
+            '_id':                0,
+            'currency_value':     '$currency_info.value',
+            'currency_type':      '$currency_info.type',
+            'selected_jar_value': 1,
+            'is_correct':         1,
+            'created_at':         1,
+        }}
+    ]
+
+    docs = list(attempts_col.aggregate(pipeline))
+    for d in docs:
+        d['created_at'] = d['created_at'].isoformat()
+
+    return Response({'history': docs}, status=status.HTTP_200_OK)

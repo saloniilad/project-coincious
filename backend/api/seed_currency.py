@@ -1,6 +1,7 @@
 import os
 from django.conf import settings
 from api.db import get_currency_collection
+from datetime import datetime
 
 BASE_PATH = os.path.join(settings.BASE_DIR, "static", "currency-images")
 
@@ -28,7 +29,6 @@ def seed_currency():
 
                 for file in os.listdir(version_path):
                     file_url = f"/static/currency-images/{currency_type}/{value}/{version}/{file}"
-
                     if "front" in file.lower():
                         front_image = file_url
                     elif "back" in file.lower():
@@ -41,18 +41,34 @@ def seed_currency():
                         "back_image": back_image
                     })
 
-            document = {
-                "value": int(value),
-                "type": type_lower,
-                "versions": versions
-            }
+            now = datetime.utcnow()
 
             currency_collection.update_one(
                 {"value": int(value), "type": type_lower},
-                {"$set": document},
+                {
+                    "$set": {
+                        "value":      int(value),
+                        "type":       type_lower,
+                        "versions":   versions,
+                        "updated_at": now,
+                    },
+                    "$setOnInsert": {
+                        "created_at": now,
+                    }
+                },
                 upsert=True
             )
 
             print(f"✔ Seeded {value} {type_lower}")
+
+    # Patch existing docs missing created_at — safe to remove after first run
+    # Patch existing docs missing created_at and updated_at
+    currency_collection.update_many(
+        {"created_at": {"$exists": False}},
+        {"$set": {
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }}
+    )
 
     print("🎉 Currency seeding completed successfully")

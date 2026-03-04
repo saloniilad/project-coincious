@@ -5,6 +5,18 @@ export default function Navbar({ profileName }) {
   const navigate = useNavigate();
 
   const handleLogout = () => {
+  const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key.includes("_level_") ||
+        key.includes("_unlocked") ||
+        key.includes("_next_difficulty")
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+  keysToRemove.forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem("user");
     localStorage.removeItem("email");
     navigate("/");

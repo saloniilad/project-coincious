@@ -32,6 +32,22 @@ export default function AuthPage() {
         }
     };
 
+    // Add this function before handleSubmit
+        const clearPreviousUserProgress = () => {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (
+            key.includes("_level_") ||
+            key.includes("_unlocked") ||
+            key.includes("_next_difficulty")
+            ) {
+            keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+        };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
@@ -53,6 +69,9 @@ export default function AuthPage() {
                 const data = await res.json();
 
                 if (!res.ok) throw new Error(data.error || "Login failed");
+
+// ✅ Clear previous user's progress before loading new user
+                clearPreviousUserProgress();
 
                 localStorage.setItem("user", data.user.name);
                 localStorage.setItem("email", data.user.email);
