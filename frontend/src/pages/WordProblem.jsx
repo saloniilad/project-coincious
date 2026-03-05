@@ -3,6 +3,8 @@ import Navbar from "../components/Navbar";
 import MathGame from "../components/MathGame";
 import { ChevronLeft } from "lucide-react";
 import roadImg from "../assets/bg.png";
+import WordProblemGame from "./WordProblemGame";
+
 
 const TOTAL_LEVELS = 5;
 const STARS_REQUIRED = 150;
