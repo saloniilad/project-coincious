@@ -108,9 +108,7 @@ function ItemDisplay({ question, item }) {
       )}
 
       <p className="font-black text-slate-700 text-base text-center">{name}</p>
-      <div className="bg-orange-500 text-white px-5 py-2 rounded-full shadow font-black text-xl">
-        ₹{price}
-      </div>
+      
     </div>
   );
 }
