@@ -56,24 +56,21 @@ def get_currency_id(currency_col, value, ctype):
 
 
 def extract_currencies_from_mcq(question_text):
-    """
-    Parse ALL Rs.<value> amounts from an MCQ question_text.
-    Returns list of (value, type) tuples.
-    Values >= 500 -> note, < 500 -> coin.
-    """
     import re
     matches = re.findall(r'Rs\.?(\d+)|₹(\d+)', question_text)
     results = []
     seen = set()
     for pair in matches:
         value = int(next(v for v in pair if v))
-        ctype = "note" if value >= 500 else "coin"
+        # Match your actual currency collection:
+        # coins: 1, 2, 5, 10  →  value <= 10
+        # notes: 20, 50, 100, 200, 500  →  value > 10
+        ctype = "coin" if value <= 10 else "note"
         key = (value, ctype)
-        if key not in seen:          # deduplicate Rs.5 + Rs.5
+        if key not in seen:
             seen.add(key)
             results.append((value, ctype))
     return results
-
 
 
 def extract_item_from_word_problem(question_text, items_col):

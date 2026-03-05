@@ -37,4 +37,5 @@ urlpatterns = [
 
     # Get the first question_id played at a specific level (for revisit)
     path('math/level-question/',         math_views.get_level_question,        name='get_level_question'),
+    path("math/currencies/", views.get_currencies_by_ids),
 ]

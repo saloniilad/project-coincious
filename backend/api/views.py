@@ -7,6 +7,8 @@ from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
 # AFTER
 from .db import get_users_collection, get_currency_collection, get_progress_collection, get_otp_collection, get_identification_attempts_collection
 
@@ -502,3 +504,32 @@ def get_identification_history(request):
         d['created_at'] = d['created_at'].isoformat()
 
     return Response({'history': docs}, status=status.HTTP_200_OK)
+
+
+
+@require_GET
+def get_currencies_by_ids(request):
+    ids_param = request.GET.get("ids", "")
+    if not ids_param:
+        return JsonResponse({"currencies": []})
+    
+    try:
+        object_ids = [ObjectId(i.strip()) for i in ids_param.split(",") if i.strip()]
+    except Exception:
+        return JsonResponse({"error": "Invalid ID format"}, status=400)
+
+    col = get_currency_collection()
+    docs = list(col.find({"_id": {"$in": object_ids}}))
+
+    currencies = []
+    for doc in docs:
+        versions = doc.get("versions", [])
+        front_image = versions[0]["front_image"] if versions else None
+        currencies.append({
+            "id":          str(doc["_id"]),
+            "type":        doc.get("type"),
+            "value":       doc.get("value"),
+            "front_image": front_image,
+        })
+
+    return JsonResponse({"currencies": currencies})
