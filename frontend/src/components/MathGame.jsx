@@ -86,13 +86,13 @@ function CurrencyWallet({ images }) {
         Coins &amp; Notes
       </p>
       <div className="flex flex-wrap justify-center gap-3">
-        {images.map((currency) => {
+        {images.map((currency,index) => {
           const path = currency.front_image.replace("/static/currency-images", "");
           const imgUrl = `${IMAGE_BASE}${path}`;
           // console.log("🖼 Rendering currency image URL:", imgUrl);  // ← add this
           return (
             <div
-              key={currency.id}
+              key={index}
               className="flex flex-col items-center bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2 shadow-sm min-w-[60px]"
             >
               <img
@@ -153,18 +153,31 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
 
   const fetchCurrencyImages = useCallback(async (currencyIds) => {
   if (!currencyIds || currencyIds.length === 0) {
-    console.log("🪙 No currency_ids found on question");
     setCurrencyImages([]);
     return;
   }
-  console.log("🪙 Fetching currency images for IDs:", currencyIds);
+
   try {
+    // 1. Get only the unique IDs to send to the API
+    const uniqueIds = [...new Set(currencyIds)];
+
     const res = await fetch(
-      `${API_BASE}/math/currencies/?ids=${currencyIds.join(",")}`
+      `${API_BASE}/math/currencies/?ids=${uniqueIds.join(",")}`
     );
     const data = await res.json();
-    console.log("🪙 Currency API response:", data);
-    setCurrencyImages(data.currencies || []);
+
+    // 2. Build a lookup map: id → currency object
+    const currencyMap = {};
+    for (const c of (data.currencies || [])) {
+      currencyMap[c.id] = c;
+    }
+
+    // 3. Re-expand using the ORIGINAL currencyIds array (preserving duplicates & order)
+    const expanded = currencyIds
+      .map((id) => currencyMap[id])
+      .filter(Boolean);
+
+    setCurrencyImages(expanded);
   } catch (e) {
     console.error("🪙 Failed to fetch currency images:", e);
     setCurrencyImages([]);

@@ -11,13 +11,15 @@ Schema (Questions Table):
                                      "hard-basic", "hard-moderate", "hard-high")
   iv.   question_text   → String
   v.    options         → Array     (for MCQ; null for word_problem)
-  vi.   correct_answer  → Number    (for MCQ; null for word_problem)
-  vii.  problem_type    → String    ("mcq" | "word_problem")
-  viii. expected_answer → Number    (for MCQ; null for word_problem)
+  vi.   correct_answer  → Number    (for MCQ; null for word_problem / drag-drop)
+  vii.  problem_type    → String    ("mcq" | "drag-drop")
+  viii. expected_answer → Number    (for drag-drop; null for MCQ)
   ix.   created_at      → Date
   x.    updated_at      → Date
-  xi.   item_id         → ObjectId  (FK → items; only for word_problem, null for MCQ)
-  xii.  currency_id     → ObjectId  (FK → currency; only for MCQ, null for word_problem)
+  xi.   item_id         → ObjectId  (FK → items; only for drag-drop, null for MCQ)
+  xii.  currency_ids    → Array     (FK → currency; only for MCQ, null for drag-drop)
+                                     NOTE: duplicates preserved — e.g. ₹2+₹2+₹5
+                                     yields [coin_2_id, coin_2_id, coin_5_id]
 
 Usage:
     python manage.py shell
@@ -56,20 +58,19 @@ def get_currency_id(currency_col, value, ctype):
 
 
 def extract_currencies_from_mcq(question_text):
+    """
+    Extract ALL currency mentions from the question text, preserving duplicates
+    so that e.g. ₹2 + ₹2 + ₹5 returns [(2,'coin'), (2,'coin'), (5,'coin')].
+    Coins: value <= 10  →  1, 2, 5, 10
+    Notes: value >  10  →  20, 50, 100, 200, 500
+    """
     import re
     matches = re.findall(r'Rs\.?(\d+)|₹(\d+)', question_text)
     results = []
-    seen = set()
     for pair in matches:
         value = int(next(v for v in pair if v))
-        # Match your actual currency collection:
-        # coins: 1, 2, 5, 10  →  value <= 10
-        # notes: 20, 50, 100, 200, 500  →  value > 10
         ctype = "coin" if value <= 10 else "note"
-        key = (value, ctype)
-        if key not in seen:
-            seen.add(key)
-            results.append((value, ctype))
+        results.append((value, ctype))   # duplicates intentionally kept
     return results
 
 
@@ -620,28 +621,37 @@ def seed_questions():
     now  = datetime.utcnow()
     docs = []
 
-    # ── MCQ helpers ───────────────────────────────────────────────────────────
-    def build_mcq(module_id, difficulty, question_text, options, correct_answer, expected_answer):
+    # ── MCQ builder ───────────────────────────────────────────────────────────
+    # FIX 1: duplicates preserved in currency_ids list (no deduplication).
+    # FIX 2: expected_answer is always null for MCQ; correct_answer holds the answer.
+    def build_mcq(module_id, difficulty, question_text, options, correct_answer, _unused_exp):
         currencies = extract_currencies_from_mcq(question_text)
         currency_ids = []
         for value, ctype in currencies:
             cid = get_currency_id(currency_col, value, ctype)
             if cid:
                 currency_ids.append(cid)
+            # If cid is None (currency not in DB), we still preserve the slot as None
+            # so the list length matches the token count — remove the `if` guard
+            # if you want strict 1-to-1 mapping including missing currencies.
         return {
             "module_id":       module_id,
             "difficulty":      difficulty,
             "question_text":   question_text,
             "options":         options,
-            "correct_answer":  correct_answer,
+            "correct_answer":  correct_answer,   # ✅ answer lives here for MCQ
             "problem_type":    "mcq",
-            "expected_answer": expected_answer,
+            "expected_answer": None,             # ✅ always null for MCQ
             "created_at":      now,
             "updated_at":      now,
             "item_id":         None,
-            "currency_ids":    currency_ids if currency_ids else None,  # Array or null
+            "currency_ids":    currency_ids if currency_ids else None,
+            # currency_ids is an ordered list matching each ₹ token in the question,
+            # with duplicates preserved — e.g. ₹2+₹2+₹5 → [coin2_id, coin2_id, coin5_id]
         }
 
+    # ── Drag-drop (word problem) builder ──────────────────────────────────────
+    # FIX 3: correct_answer is always null for drag-drop; expected_answer holds the answer.
     def build_word_problem(module_id, difficulty, question_text, item_name, expected_answer):
         item_id = get_item_id(items_col, item_name) if item_name else None
         return {
@@ -649,13 +659,13 @@ def seed_questions():
             "difficulty":      difficulty,
             "question_text":   question_text,
             "options":         None,
-            "correct_answer":  None,
-            "problem_type":    "drag-drop",       # ✅ updated
-            "expected_answer": expected_answer,   # ✅ actual numeric answer
+            "correct_answer":  None,             # ✅ always null for drag-drop
+            "problem_type":    "drag-drop",
+            "expected_answer": expected_answer,  # ✅ answer lives here for drag-drop
             "created_at":      now,
             "updated_at":      now,
             "item_id":         item_id,
-            "currency_id":     None,
+            "currency_ids":    None,
         }
 
     # ── Build Addition MCQ docs ───────────────────────────────────────────────
@@ -683,7 +693,7 @@ def seed_questions():
 
     # ── Summary ───────────────────────────────────────────────────────────────
     mcq_count = sum(1 for d in docs if d["problem_type"] == "mcq")
-    wp_count  = sum(1 for d in docs if d["problem_type"] == "word_problem")
+    wp_count  = sum(1 for d in docs if d["problem_type"] == "drag-drop")
 
     print(f"\n🎉 Questions seeded successfully!")
     print(f"   Total inserted : {len(result.inserted_ids)}")
@@ -692,7 +702,7 @@ def seed_questions():
     print(f"     • Subtraction    : {sum(1 for d in docs if d['module_id']==subtraction_id)}")
     print(f"     • Multiplication : {sum(1 for d in docs if d['module_id']==multiplication_id)}")
     print(f"     • Division       : {sum(1 for d in docs if d['module_id']==division_id)}")
-    print(f"   Word Problems  : {wp_count}")
+    print(f"   Drag-drop      : {wp_count}")
     print(f"\nSchema per document type:")
-    print(f"   MCQ          → item_id=null, currency_id=<ObjectId|null>")
-    print(f"   Word Problem → currency_id=null, options=null, correct_answer=null, expected_answer=null, item_id=<ObjectId|null>")
+    print(f"   MCQ       → correct_answer=<Number>, expected_answer=null, item_id=null,  currency_ids=[...] (dupes preserved)")
+    print(f"   Drag-drop → correct_answer=null,     expected_answer=<Number>, item_id=<ObjectId|null>, currency_ids=null")
