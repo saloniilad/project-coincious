@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import math_views
+from .currency_views import get_currencies_by_ids, get_items_by_ids
 
 urlpatterns = [
     # ── Auth ──────────────────────────────────────────────────────────────────
@@ -38,4 +39,7 @@ urlpatterns = [
     # Get the first question_id played at a specific level (for revisit)
     path('math/level-question/',         math_views.get_level_question,        name='get_level_question'),
     path("math/currencies/", views.get_currencies_by_ids),
+
+    path("currencies/", get_currencies_by_ids, name="get_currencies_by_ids"),
+    path("items/",      get_items_by_ids,      name="get_items_by_ids"),
 ]

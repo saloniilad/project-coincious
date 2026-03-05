@@ -619,6 +619,7 @@ def seed_questions():
     wordproblems_id    = get_module_id(modules_col, "wordproblems")
 
     now  = datetime.utcnow()
+    all_currency_ids = [c["_id"] for c in currency_col.find({}, {"_id": 1})]  # ← add this
     docs = []
 
     # ── MCQ builder ───────────────────────────────────────────────────────────
@@ -652,6 +653,7 @@ def seed_questions():
 
     # ── Drag-drop (word problem) builder ──────────────────────────────────────
     # FIX 3: correct_answer is always null for drag-drop; expected_answer holds the answer.
+    
     def build_word_problem(module_id, difficulty, question_text, item_name, expected_answer):
         item_id = get_item_id(items_col, item_name) if item_name else None
         return {
@@ -659,15 +661,14 @@ def seed_questions():
             "difficulty":      difficulty,
             "question_text":   question_text,
             "options":         None,
-            "correct_answer":  None,             # ✅ always null for drag-drop
+            "correct_answer":  None,
             "problem_type":    "drag-drop",
-            "expected_answer": expected_answer,  # ✅ answer lives here for drag-drop
+            "expected_answer": expected_answer,
             "created_at":      now,
             "updated_at":      now,
             "item_id":         item_id,
-            "currency_ids":    None,
-        }
-
+            "currency_ids":    all_currency_ids,
+    }
     # ── Build Addition MCQ docs ───────────────────────────────────────────────
     for (diff, qtext, opts, ans, ptype, exp) in ADDITION_QUESTIONS:
         docs.append(build_mcq(addition_id, diff, qtext, opts, ans, exp))

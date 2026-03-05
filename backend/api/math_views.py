@@ -44,23 +44,23 @@ def _find_module(name: str):
 
 
 def _serialize_question(doc):
-    """Convert a MongoDB question document to a JSON-safe dict."""
-    if not doc:
-        return None
-
-    # Safely serialize currency_ids (array of ObjectIds → array of strings)
     raw_currency_ids = doc.get("currency_ids") or []
     currency_ids = [str(cid) for cid in raw_currency_ids]
 
+    # Serialize item_id if present
+    raw_item_id = doc.get("item_id")
+    item_id = str(raw_item_id) if raw_item_id else None
+
     return {
-        "question_id":    str(doc["_id"]),
-        "difficulty":     doc["difficulty"],
-        "question_text":  doc["question_text"],
-        "options":        doc.get("options"),
-        "correct_answer": doc.get("correct_answer"),
+        "question_id":     str(doc["_id"]),
+        "difficulty":      doc["difficulty"],
+        "question_text":   doc["question_text"],
+        "options":         doc.get("options"),
+        "correct_answer":  doc.get("correct_answer"),
         "expected_answer": doc.get("expected_answer"),
-        "problem_type":   doc["problem_type"],
-        "currency_ids":   currency_ids,   # ← this was missing
+        "problem_type":    doc["problem_type"],
+        "currency_ids":    currency_ids,
+        "item_id":         item_id,  # ✅ add this
     }
 
 # ── Difficulty ordering ────────────────────────────────────────────────────────

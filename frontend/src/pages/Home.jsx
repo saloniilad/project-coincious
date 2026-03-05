@@ -3,18 +3,20 @@ import { ChevronRight } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
 
-const MODULES = ["addition", "subtraction", "multiplication", "division", "wordproblems"];
+const MODULES      = ["addition", "subtraction", "multiplication", "division", "wordproblems"];
 const TOTAL_LEVELS = 10;
+const WP_LEVELS    = 5;
 const STARS_TO_UNLOCK = 10;
 
 export default function Home() {
   const navigate = useNavigate();
-  const [profileName, setProfileName]           = useState("Student");
-  const [totalStars, setTotalStars]             = useState(0);
-  const [totalScore, setTotalScore]             = useState(0);
-  const [additionStars, setAdditionStars]       = useState(0);
-  const [subtractionStars, setSubtractionStars] = useState(0);
-  const [multiplicationStars, setMultiplicationStars] = useState(0);
+  const [profileName,           setProfileName]           = useState("Student");
+  const [totalStars,            setTotalStars]            = useState(0);
+  const [totalScore,            setTotalScore]            = useState(0);
+  const [additionStars,         setAdditionStars]         = useState(0);
+  const [subtractionStars,      setSubtractionStars]      = useState(0);
+  const [multiplicationStars,   setMultiplicationStars]   = useState(0);
+  const [divisionStars,         setDivisionStars]         = useState(0);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -28,7 +30,7 @@ export default function Home() {
   const calculateStats = () => {
     let stars = 0, score = 0;
     MODULES.forEach((mod) => {
-      const levels = mod === "wordproblems" ? 5 : TOTAL_LEVELS;
+      const levels = mod === "wordproblems" ? WP_LEVELS : TOTAL_LEVELS;
       for (let i = 1; i <= levels; i++) {
         const s = Number(localStorage.getItem(`${mod}_level_${i}_stars`)) || 0;
         stars += s;
@@ -36,16 +38,18 @@ export default function Home() {
       }
     });
 
-    let addStars = 0, subStars = 0, mulStars = 0;
+    let addStars = 0, subStars = 0, mulStars = 0, divStars = 0;
     for (let i = 1; i <= TOTAL_LEVELS; i++) {
-      addStars += Number(localStorage.getItem(`addition_level_${i}_stars`)) || 0;
-      subStars += Number(localStorage.getItem(`subtraction_level_${i}_stars`)) || 0;
+      addStars += Number(localStorage.getItem(`addition_level_${i}_stars`))       || 0;
+      subStars += Number(localStorage.getItem(`subtraction_level_${i}_stars`))    || 0;
       mulStars += Number(localStorage.getItem(`multiplication_level_${i}_stars`)) || 0;
+      divStars += Number(localStorage.getItem(`division_level_${i}_stars`))       || 0;
     }
 
     setAdditionStars(addStars);
     setSubtractionStars(subStars);
     setMultiplicationStars(mulStars);
+    setDivisionStars(divStars);
     setTotalStars(stars);
     setTotalScore(score);
   };
@@ -53,6 +57,7 @@ export default function Home() {
   const isSubtractionUnlocked    = additionStars       >= STARS_TO_UNLOCK;
   const isMultiplicationUnlocked = subtractionStars    >= STARS_TO_UNLOCK;
   const isDivisionUnlocked       = multiplicationStars >= STARS_TO_UNLOCK;
+  const isWordProblemsUnlocked   = divisionStars        >= STARS_TO_UNLOCK;
 
   return (
     <div className="min-h-screen bg-[#f3f1ee]">
@@ -123,8 +128,9 @@ export default function Home() {
               <span className={`text-xs px-3 py-1 rounded-full ${isDivisionUnlocked ? "bg-green-100" : "border"}`}>
                 {isDivisionUnlocked ? "Division" : "🔒 Division"}
               </span>
-              <span className="border text-xs px-3 py-1 rounded-full">
-                🔒 Word Problems
+              {/* ── Word Problems badge — now tracks divisionStars ── */}
+              <span className={`text-xs px-3 py-1 rounded-full ${isWordProblemsUnlocked ? "bg-orange-100" : "border"}`}>
+                {isWordProblemsUnlocked ? "📘 Word Problems" : "🔒 Word Problems"}
               </span>
             </div>
           </div>

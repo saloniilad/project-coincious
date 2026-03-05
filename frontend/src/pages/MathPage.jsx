@@ -1,12 +1,13 @@
 import Navbar from "../components/Navbar";
-import { Plus, Minus, X, Divide, Lock, ChevronRight } from "lucide-react";
+import { Plus, Minus, X, Divide, Lock, ChevronRight, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 
 const TOTAL_LEVELS    = 10;
+const WP_TOTAL_LEVELS = 5;
 const STARS_TO_UNLOCK = 10;
 
-// ✅ Defined OUTSIDE the component
+// Defined OUTSIDE the component
 const ModuleCard = ({ icon, color, title, subtitle, locked, stats, onClick }) => (
   <div
     onClick={locked ? undefined : onClick}
@@ -26,7 +27,7 @@ const ModuleCard = ({ icon, color, title, subtitle, locked, stats, onClick }) =>
         </p>
         {!locked && stats.stars > 0 && (
           <div className="flex gap-0.5 mt-1">
-            {Array.from({ length: stats.stars > 30 ? 30 : stats.stars }).map((_, i) => (
+            {Array.from({ length: Math.min(stats.stars, 30) }).map((_, i) => (
               <span key={i} className="text-yellow-400 text-xs">★</span>
             ))}
           </div>
@@ -39,11 +40,12 @@ const ModuleCard = ({ icon, color, title, subtitle, locked, stats, onClick }) =>
 
 export default function MathPage() {
   const navigate = useNavigate();
-  const [profileName, setProfileName] = useState("Student");
+  const [profileName,         setProfileName]         = useState("Student");
   const [additionStats,       setAdditionStats]       = useState({ stars: 0, levels: 0 });
   const [subtractionStats,    setSubtractionStats]    = useState({ stars: 0, levels: 0 });
   const [multiplicationStats, setMultiplicationStats] = useState({ stars: 0, levels: 0 });
   const [divisionStats,       setDivisionStats]       = useState({ stars: 0, levels: 0 });
+  const [wordProblemStats,    setWordProblemStats]    = useState({ stars: 0, levels: 0 });
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -51,9 +53,9 @@ export default function MathPage() {
     loadStats();
   }, []);
 
-  const calculateModuleStats = (mod) => {
+  const calculateModuleStats = (mod, totalLevels = TOTAL_LEVELS) => {
     let stars = 0, completedLevels = 0;
-    for (let i = 1; i <= TOTAL_LEVELS; i++) {
+    for (let i = 1; i <= totalLevels; i++) {
       const s = Number(localStorage.getItem(`${mod}_level_${i}_stars`)) || 0;
       stars += s;
       if (s > 0) completedLevels++;
@@ -66,11 +68,14 @@ export default function MathPage() {
     setSubtractionStats(calculateModuleStats("subtraction"));
     setMultiplicationStats(calculateModuleStats("multiplication"));
     setDivisionStats(calculateModuleStats("division"));
+    setWordProblemStats(calculateModuleStats("wordproblems", WP_TOTAL_LEVELS));
   };
 
   const isSubtractionUnlocked    = additionStats.stars       >= STARS_TO_UNLOCK;
   const isMultiplicationUnlocked = subtractionStats.stars    >= STARS_TO_UNLOCK;
   const isDivisionUnlocked       = multiplicationStats.stars >= STARS_TO_UNLOCK;
+  // Word Problems unlocks after earning any stars in Division
+  const isWordProblemsUnlocked   = divisionStats.stars       >= STARS_TO_UNLOCK;
 
   return (
     <div className="min-h-screen bg-[#f3f1ee]">
@@ -122,6 +127,17 @@ export default function MathPage() {
           locked={!isDivisionUnlocked}
           stats={divisionStats}
           onClick={() => navigate("/division")}
+        />
+
+        {/* ── Word Problems ── */}
+        <ModuleCard
+          icon={<BookOpen />}
+          color="bg-orange-400"
+          title="Word Problems"
+          subtitle={`Complete Division (${STARS_TO_UNLOCK} stars) to unlock`}
+          locked={!isWordProblemsUnlocked}
+          stats={wordProblemStats}
+          onClick={() => navigate("/wordproblems")}
         />
 
         <div className="pt-6">
