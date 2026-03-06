@@ -27,7 +27,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronLeft, Lightbulb, Clock } from "lucide-react";
 import WordProblemGame from "./WordProblemGame";
 
-
 const API_BASE = "http://localhost:8000/api";
 const IMAGE_BASE = import.meta.env.VITE_IMAGES || "http://127.0.0.1:8000";
 
@@ -55,19 +54,6 @@ const DIFFICULTY_STEPS = [
   "hard-high",
 ];
 
-// const LEVEL_START_DIFFICULTY = {
-//   1: "easy-basic",
-//   2: "easy-basic",
-//   3: "easy-moderate",
-//   4: "easy-moderate",
-//   5: "easy-high",
-//   6: "medium-basic",
-//   7: "medium-moderate",
-//   8: "medium-high",
-//   9: "hard-basic",
-//   10: "hard-moderate",
-// };
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function generateHint(question) {
   if (!question) return "Think carefully! 🤔";
@@ -87,29 +73,31 @@ function CurrencyWallet({ images }) {
       <p className="text-xs text-gray-400 text-center mb-2 font-medium tracking-wide uppercase">
         Coins &amp; Notes
       </p>
-      <div className="flex flex-wrap justify-center gap-3">
-        {images.map((currency,index) => {
-          const path = currency.front_image.replace("/static/currency-images", "");
+      <div className="flex flex-wrap justify-center gap-4">
+        {images.map((currency, index) => {
+          const path = currency.front_image.replace(
+            "/static/currency-images",
+            "",
+          );
           const imgUrl = `${IMAGE_BASE}${path}`;
-          // console.log("🖼 Rendering currency image URL:", imgUrl);  // ← add this
           return (
             <div
               key={index}
-              className="flex flex-col items-center bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2 shadow-sm min-w-[60px]"
+              className="flex flex-col items-center bg-amber-50 border border-amber-200 rounded-2xl px-6 py-5 shadow-sm min-w-[110px]"
             >
               <img
                 src={imgUrl}
                 alt={`₹${currency.value} ${currency.type}`}
-                className="w-14 h-14 object-contain"
+                className="w-32 h-32 object-contain"
                 onError={(e) => {
-                  console.error("🖼 Image failed to load:", imgUrl);  // ← and this
+                  console.error("🖼 Image failed to load:", imgUrl);
                   e.target.style.display = "none";
                 }}
               />
-              <span className="text-xs text-amber-700 mt-1 font-semibold">
+              <span className="text-sm text-amber-700 mt-2 font-semibold">
                 ₹{currency.value}
               </span>
-              <span className="text-[10px] text-gray-400 capitalize">
+              <span className="text-xs text-gray-400 capitalize">
                 {currency.type}
               </span>
             </div>
@@ -120,71 +108,71 @@ function CurrencyWallet({ images }) {
   );
 }
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function MathGame({ module, symbol, level, onBack, onComplete }) {
+export default function MathGame({
+  module,
+  symbol,
+  level,
+  onBack,
+  onComplete,
+}) {
   const profileName = localStorage.getItem("user") || "Student";
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [question, setQuestion]         = useState(null);
-  const [currencyImages, setCurrencyImages] = useState([]);  // ← wallet images
-  const [difficulty, setDifficulty]     = useState(() => {
+  const [question, setQuestion] = useState(null);
+  const [currencyImages, setCurrencyImages] = useState([]);
+  const [difficulty, setDifficulty] = useState(() => {
     if (level === 1) return "easy-basic";
     return localStorage.getItem(`${module}_next_difficulty`) || "easy-basic";
   });
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const [selectedOption, setSelectedOption] = useState(null);
-  const [wordAnswer, setWordAnswer]         = useState("");
-  const [feedback, setFeedback]             = useState(null);
+  const [wordAnswer, setWordAnswer] = useState("");
+  const [feedback, setFeedback] = useState(null);
 
-  const [attempts, setAttempts]         = useState(0);
-  const [hintsUsed, setHintsUsed]       = useState(0);
+  const [attempts, setAttempts] = useState(0);
+  const [hintsUsed, setHintsUsed] = useState(0);
   const [hintMessages, setHintMessages] = useState([]);
   const [showHintPanel, setShowHintPanel] = useState(false);
 
-  const [timeSpent, setTimeSpent]       = useState(0);
-  const timerRef                        = useRef(null);
-  const startTimeRef                    = useRef(null);
+  const [timeSpent, setTimeSpent] = useState(0);
+  const timerRef = useRef(null);
+  const startTimeRef = useRef(null);
 
-  const [showResult, setShowResult]     = useState(false);
-  const [starsEarned, setStarsEarned]   = useState(0);
-  const [deltaStars, setDeltaStars]     = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [starsEarned, setStarsEarned] = useState(0);
+  const [deltaStars, setDeltaStars] = useState(0);
   const [prevBestStars, setPrevBestStars] = useState(0);
   const [savedQuestionId, setSavedQuestionId] = useState(null);
-  const [isRevisit, setIsRevisit]       = useState(false);
+  const [isRevisit, setIsRevisit] = useState(false);
 
   const fetchCurrencyImages = useCallback(async (currencyIds) => {
-  if (!currencyIds || currencyIds.length === 0) {
-    setCurrencyImages([]);
-    return;
-  }
-
-  try {
-    // 1. Get only the unique IDs to send to the API
-    const uniqueIds = [...new Set(currencyIds)];
-
-    const res = await fetch(
-      `${API_BASE}/math/currencies/?ids=${uniqueIds.join(",")}`
-    );
-    const data = await res.json();
-
-    // 2. Build a lookup map: id → currency object
-    const currencyMap = {};
-    for (const c of (data.currencies || [])) {
-      currencyMap[c.id] = c;
+    if (!currencyIds || currencyIds.length === 0) {
+      setCurrencyImages([]);
+      return;
     }
 
-    // 3. Re-expand using the ORIGINAL currencyIds array (preserving duplicates & order)
-    const expanded = currencyIds
-      .map((id) => currencyMap[id])
-      .filter(Boolean);
+    try {
+      const uniqueIds = [...new Set(currencyIds)];
+      const res = await fetch(
+        `${API_BASE}/math/currencies/?ids=${uniqueIds.join(",")}`,
+      );
+      const data = await res.json();
 
-    setCurrencyImages(expanded);
-  } catch (e) {
-    console.error("🪙 Failed to fetch currency images:", e);
-    setCurrencyImages([]);
-  }
-}, []);
+      const currencyMap = {};
+      for (const c of data.currencies || []) {
+        currencyMap[c.id] = c;
+      }
+
+      const expanded = currencyIds.map((id) => currencyMap[id]).filter(Boolean);
+
+      setCurrencyImages(expanded);
+    } catch (e) {
+      console.error("🪙 Failed to fetch currency images:", e);
+      setCurrencyImages([]);
+    }
+  }, []);
 
   // ── Fetch question on mount ────────────────────────────────────────────────
   useEffect(() => {
@@ -204,48 +192,40 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
     setHintMessages([]);
     setShowHintPanel(false);
     setShowResult(false);
-    setCurrencyImages([]);  // clear previous wallet while loading
+    setCurrencyImages([]);
     stopTimer();
 
     try {
-      // 1. Check if this level was previously played
       const revisitRes = await fetch(
-        `${API_BASE}/math/level-question/?name=${encodeURIComponent(profileName)}&module=${module}&level=${level}`
+        `${API_BASE}/math/level-question/?name=${encodeURIComponent(profileName)}&module=${module}&level=${level}`,
       );
       const revisitData = await revisitRes.json();
 
       if (revisitData.question_id) {
-        // ── REVISIT: load the same question ──────────────────────────────
         setIsRevisit(true);
         setDifficulty(revisitData.difficulty);
 
         const byIdRes = await fetch(
-          `${API_BASE}/math/question/by-id/?question_id=${revisitData.question_id}`
+          `${API_BASE}/math/question/by-id/?question_id=${revisitData.question_id}`,
         );
         const byIdData = await byIdRes.json();
         const q = byIdData.question;
 
         setQuestion(q);
         setSavedQuestionId(revisitData.question_id);
-
-        // ✅ Fetch currency images for revisited question
         await fetchCurrencyImages(q?.currency_ids || []);
-
       } else {
-        // ── FRESH: load a new question ────────────────────────────────────
         setIsRevisit(false);
 
         if (level === 1) {
           setDifficulty("easy-basic");
           const freshQ = await fetchFreshQuestion("easy-basic");
-          // ✅ Fetch currency images for fresh question (level 1)
           await fetchCurrencyImages(freshQ?.currency_ids || []);
         } else {
           const savedDiff =
             localStorage.getItem(`${module}_next_difficulty`) || "easy-basic";
           setDifficulty(savedDiff);
           const freshQ = await fetchFreshQuestion(savedDiff);
-          // ✅ Fetch currency images for fresh question (level 2–10)
           await fetchCurrencyImages(freshQ?.currency_ids || []);
         }
       }
@@ -257,16 +237,15 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
     }
   }, [module, level, profileName, fetchCurrencyImages]);
 
-  // Returns the question object so callers can chain fetchCurrencyImages
   const fetchFreshQuestion = async (diff) => {
     const res = await fetch(
-      `${API_BASE}/math/question/?module=${module}&difficulty=${diff}`
+      `${API_BASE}/math/question/?module=${module}&difficulty=${diff}`,
     );
     if (!res.ok) throw new Error("No question found");
     const data = await res.json();
     setQuestion(data.question);
     setSavedQuestionId(null);
-    return data.question;  // ← caller uses this to get currency_ids
+    return data.question;
   };
 
   // ── Timer ──────────────────────────────────────────────────────────────────
@@ -325,13 +304,12 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
       return;
     }
 
-    // ── Correct! ──────────────────────────────────────────────────────────
     stopTimer();
     setFeedback("correct");
 
-    const elapsed       = getElapsedSeconds();
+    const elapsed = getElapsedSeconds();
     const finalAttempts = attempts + 1;
-    const stars         = calculateStars(finalAttempts, elapsed, hintsUsed);
+    const stars = calculateStars(finalAttempts, elapsed, hintsUsed);
 
     setStarsEarned(stars);
     setTimeSpent(Math.round(elapsed));
@@ -341,34 +319,34 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:        profileName,
-          module:      module,
-          level:       level,
+          name: profileName,
+          module: module,
+          level: level,
           question_id: question.question_id,
-          attempts:    finalAttempts,
-          time_spent:  Math.round(elapsed),
-          hints_used:  hintsUsed,
+          attempts: finalAttempts,
+          time_spent: Math.round(elapsed),
+          hints_used: hintsUsed,
           user_answer: userAnswer,
-          difficulty:  difficulty,
+          difficulty: difficulty,
         }),
       });
 
       const data = await res.json();
 
-      const delta    = data.delta_stars        ?? 0;
+      const delta = data.delta_stars ?? 0;
       const prevBest = data.previous_best_stars ?? 0;
-      const nextDiff = data.next_difficulty    ?? difficulty;
+      const nextDiff = data.next_difficulty ?? difficulty;
 
       setDifficulty(nextDiff);
       localStorage.setItem(`${module}_next_difficulty`, nextDiff);
       setDeltaStars(delta);
       setPrevBestStars(prevBest);
 
-      const storageKey     = `${module}_level_${level}_stars`;
-      const existing       = Number(localStorage.getItem(storageKey)) || 0;
+      const storageKey = `${module}_level_${level}_stars`;
+      const existing = Number(localStorage.getItem(storageKey)) || 0;
       localStorage.setItem(storageKey, existing + delta);
 
-      const unlockedKey     = `${module}_unlocked`;
+      const unlockedKey = `${module}_unlocked`;
       const currentUnlocked = Number(localStorage.getItem(unlockedKey)) || 1;
       if (level >= currentUnlocked && level < 10) {
         localStorage.setItem(unlockedKey, level + 1);
@@ -390,7 +368,9 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
       <div className="min-h-screen bg-[#f3f1ee] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-5xl animate-bounce">🧮</div>
-          <p className="text-xl font-semibold text-[#3b2f1e]">Loading question…</p>
+          <p className="text-xl font-semibold text-[#3b2f1e]">
+            Loading question…
+          </p>
         </div>
       </div>
     );
@@ -409,7 +389,10 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
           >
             Retry
           </button>
-          <button onClick={onBack} className="block w-full text-gray-500 underline text-sm">
+          <button
+            onClick={onBack}
+            className="block w-full text-gray-500 underline text-sm"
+          >
             Go back
           </button>
         </div>
@@ -426,14 +409,18 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
             {starsEarned === 3 ? "🎉" : starsEarned === 2 ? "👍" : "💪"}
           </div>
 
-          <h2 className="text-2xl font-bold text-[#3b2f1e]">Level {level} Complete!</h2>
+          <h2 className="text-2xl font-bold text-[#3b2f1e]">
+            Level {level} Complete!
+          </h2>
 
           <div className="flex justify-center gap-2 text-4xl">
             {[1, 2, 3].map((s) => (
               <span
                 key={s}
                 className={`transition-transform duration-300 ${
-                  s <= starsEarned ? "text-yellow-400 scale-125" : "text-gray-300"
+                  s <= starsEarned
+                    ? "text-yellow-400 scale-125"
+                    : "text-gray-300"
                 }`}
               >
                 ★
@@ -445,14 +432,23 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
             {starsEarned === 3
               ? "Perfect! Excellent work! 🌟"
               : starsEarned === 2
-              ? "Great job! Keep it up!"
-              : "Good effort! Practice makes perfect!"}
+                ? "Great job! Keep it up!"
+                : "Good effort! Practice makes perfect!"}
           </p>
 
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
-            <div className="flex justify-between"><span>⏱ Time</span><span>{timeSpent}s</span></div>
-            <div className="flex justify-between"><span>🔁 Attempts</span><span>{attempts + 1}</span></div>
-            <div className="flex justify-between"><span>💡 Hints used</span><span>{hintsUsed}</span></div>
+            <div className="flex justify-between">
+              <span>⏱ Time</span>
+              <span>{timeSpent}s</span>
+            </div>
+            <div className="flex justify-between">
+              <span>🔁 Attempts</span>
+              <span>{attempts + 1}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>💡 Hints used</span>
+              <span>{hintsUsed}</span>
+            </div>
           </div>
 
           {deltaStars > 0 && (
@@ -467,13 +463,17 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
           )}
           {deltaStars === 0 && prevBestStars > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 text-blue-700 text-sm">
-              You already scored {prevBestStars} ★ on this level — no new stars added.
+              You already scored {prevBestStars} ★ on this level — no new stars
+              added.
             </div>
           )}
 
           <div className="flex flex-col gap-3 pt-2">
             <button
-              onClick={() => { onComplete(level); onBack(); }}
+              onClick={() => {
+                onComplete(level);
+                onBack();
+              }}
               className="bg-orange-500 text-white py-3 rounded-xl font-semibold hover:bg-orange-600 transition"
             >
               🗺 Back to Map
@@ -495,9 +495,8 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
 
   return (
     <div className="min-h-screen bg-[#f3f1ee] flex flex-col">
-
       {/* Top bar */}
-      <div className="max-w-2xl mx-auto w-full px-4 pt-6 flex items-center justify-between">
+      <div className="max-w-3xl mx-auto w-full px-4 pt-6 flex items-center justify-between">
         <button
           onClick={onBack}
           className="bg-blue-200 text-blue-800 px-4 py-2 rounded-2xl flex items-center gap-2 hover:bg-blue-300 transition text-sm"
@@ -516,14 +515,13 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
         </div>
       </div>
 
-      {/* Main card */}
+      {/* Main card — wider and taller */}
       <div className="flex-1 flex items-center justify-center px-4 py-6">
-        <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 space-y-6">
-
+        <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-8 space-y-6">
           {/* Question header + wallet */}
           <div className="text-center">
             <div className="text-4xl mb-2">{symbol}</div>
-            <h2 className="text-xl font-bold text-[#3b2f1e] leading-snug">
+            <h2 className="text-2xl font-bold text-[#3b2f1e] leading-snug">
               {question?.question_text}
             </h2>
             {isRevisit && (
@@ -532,7 +530,7 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
               </span>
             )}
 
-            {/* ✅ Currency wallet — shown for BOTH fresh and revisit questions */}
+            {/* Currency wallet */}
             <CurrencyWallet images={currencyImages} />
           </div>
 
@@ -543,14 +541,14 @@ export default function MathGame({ module, symbol, level, onBack, onComplete }) 
             </div>
           )}
 
-          {/* MCQ options */}
+          {/* MCQ options — slightly smaller */}
           {isMCQ && question?.options && (
             <div className="grid grid-cols-2 gap-3">
               {question.options.map((opt, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleMCQSelect(opt)}
-                  className={`py-4 rounded-2xl text-lg font-bold transition border-2
+                  className={`py-2 rounded-2xl text-sm font-bold transition border-2
                     ${
                       selectedOption === opt
                         ? "bg-orange-500 text-white border-orange-500 scale-105"
