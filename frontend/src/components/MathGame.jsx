@@ -67,7 +67,10 @@ function generateHint(question) {
 
 // ── Currency Wallet UI ────────────────────────────────────────────────────────
 function CurrencyWallet({ images }) {
+  const [zoomedIdx, setZoomedIdx] = useState(null);
+
   if (!images || images.length === 0) return null;
+
   return (
     <div className="mt-4">
       <p className="text-xs text-gray-400 text-center mb-2 font-medium tracking-wide uppercase">
@@ -83,14 +86,14 @@ function CurrencyWallet({ images }) {
           return (
             <div
               key={index}
-              className="flex flex-col items-center bg-amber-50 border border-amber-200 rounded-2xl px-6 py-5 shadow-sm min-w-[110px]"
+              onClick={() => setZoomedIdx(index)}
+              className="flex flex-col items-center bg-amber-50 border border-amber-200 rounded-2xl px-6 py-5 shadow-sm min-w-[110px] cursor-zoom-in hover:border-pink-300 hover:shadow-md transition"
             >
               <img
                 src={imgUrl}
                 alt={`₹${currency.value} ${currency.type}`}
                 className="w-32 h-32 object-contain"
                 onError={(e) => {
-                  console.error("🖼 Image failed to load:", imgUrl);
                   e.target.style.display = "none";
                 }}
               />
@@ -100,10 +103,91 @@ function CurrencyWallet({ images }) {
               <span className="text-xs text-gray-400 capitalize">
                 {currency.type}
               </span>
+              <span className="text-[10px] text-pink-400 mt-1">
+                🔍 tap to zoom
+              </span>
             </div>
           );
         })}
       </div>
+
+      {/* ── Zoom popup overlay ── */}
+      {zoomedIdx !== null &&
+        (() => {
+          const c = images[zoomedIdx];
+          const path = c.front_image.replace("/static/currency-images", "");
+          const imgUrl = `${IMAGE_BASE}${path}`;
+          return (
+            <div
+              onClick={() => setZoomedIdx(null)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                cursor: "zoom-out",
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: "white",
+                  borderRadius: 24,
+                  padding: "32px 40px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 16,
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+                  animation: "zoomIn 0.2s ease-out",
+                }}
+              >
+                <style>{`
+                @keyframes zoomIn {
+                  from { transform: scale(0.7); opacity: 0; }
+                  to   { transform: scale(1);   opacity: 1; }
+                }
+              `}</style>
+                <img
+                  src={imgUrl}
+                  alt={`₹${c.value}`}
+                  style={{ width: 220, height: 220, objectFit: "contain" }}
+                />
+                <p style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>
+                  ₹{c.value}
+                </p>
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "#9ca3af",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {c.type}
+                </p>
+                <button
+                  onClick={() => setZoomedIdx(null)}
+                  style={{
+                    marginTop: 4,
+                    background: "linear-gradient(135deg,#ec4899,#f472b6)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 12,
+                    padding: "8px 28px",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                >
+                  Close ✕
+                </button>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
@@ -520,7 +604,29 @@ export default function MathGame({
         <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-8 space-y-6">
           {/* Question header + wallet */}
           <div className="text-center">
-            <div className="text-4xl mb-2">{symbol}</div>
+            {/* Enhanced symbol badge */}
+            <div className="flex justify-center mb-3">
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #ec4899, #f472b6)",
+                  borderRadius: "50%",
+                  width: 64,
+                  height: 64,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow:
+                    "0 4px 18px rgba(236,72,153,0.45), 0 1px 4px rgba(0,0,0,0.1)",
+                  fontSize: 32,
+                  fontWeight: 900,
+                  color: "white",
+                  letterSpacing: "-1px",
+                  border: "3px solid rgba(255,255,255,0.35)",
+                }}
+              >
+                {symbol}
+              </div>
+            </div>
             <h2 className="text-2xl font-bold text-[#3b2f1e] leading-snug">
               {question?.question_text}
             </h2>
