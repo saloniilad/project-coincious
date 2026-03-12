@@ -14,13 +14,51 @@ export default function Subtraction() {
   const [unlockedLevel, setUnlockedLevel] = useState(1);
   const [totalStars, setTotalStars] = useState(0);
   const [profileName, setProfileName] = useState("Student");
+  const loadProgressFromBackend = async (name) => {
+  try {
+    const res = await fetch(
+      `http://localhost:8000/api/progress/load/?name=${encodeURIComponent(name)}`
+    );
+
+    const data = await res.json();
+    const progress = data.progress || {};
+
+    Object.entries(progress).forEach(([key, value]) => {
+      localStorage.setItem(key, value);
+    });
+
+  } catch (err) {
+    console.error("Failed loading progress:", err);
+  }
+};
 
   useEffect(() => {
-    const saved = Number(localStorage.getItem("subtraction_unlocked")) || 1;
-    setUnlockedLevel(saved);
+  
     const storedUser = localStorage.getItem("user");
-    if (storedUser) setProfileName(storedUser);
-    calculateTotalStars();
+  
+    if (storedUser) {
+      setProfileName(storedUser);
+  
+      loadProgressFromBackend(storedUser).then(() => {
+  
+        let unlocked = 1;
+  
+  for (let i = 1; i <= TOTAL_LEVELS; i++) {
+    const stars = Number(localStorage.getItem(`subtraction_level_${i}_stars`)) || 0;
+  
+    if (stars > 0) {
+      unlocked = i + 1;
+    }
+  }
+  
+  setUnlockedLevel(unlocked);
+  
+        calculateTotalStars();
+  
+      });
+  
+    }
+  
   }, []);
 
   const calculateTotalStars = () => {
@@ -75,31 +113,70 @@ export default function Subtraction() {
     <div className="min-h-screen bg-[#f3f1ee]">
       <Navbar profileName={profileName} />
 
-      <div className="max-w-4xl mx-auto px-6 pt-8">
-        <div className="flex items-center gap-6 mb-4">
-          <button
-            onClick={() => navigate("/math")}
-            className="bg-blue-200 text-blue-800 px-5 py-2 rounded-2xl flex items-center gap-2 hover:bg-blue-300 transition"
-          >
-            <ChevronLeft size={16} />
-            Back
-          </button>
-
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#3b2f1e]">
-              ➖ Subtraction
-            </h1>
-            <p className="text-sm sm:text-lg text-[#8b7b65] mt-1">
-              ⭐ Total Stars: {totalStars} / {TOTAL_LEVELS * 3}
-              {totalStars >= STARS_REQUIRED_TO_UNLOCK && (
-                <span className="ml-3 text-green-600 font-semibold text-sm">
-                  ✅ Multiplication unlocked!
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
+      <div className="w-full bg-white shadow-sm border-b">
+           
+             <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 md:px-8 py-4 gap-4">
+           
+               {/* LEFT SECTION */}
+               <div className="flex items-center gap-4">
+           
+                 <button
+                   onClick={() => navigate("/math")}
+                   className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-200 transition text-sm md:text-base"
+                 >
+                   <ChevronLeft size={18}/>
+                   Back
+                 </button>
+           
+                 <div className="flex items-center gap-3">
+           
+                   <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-green-100 flex items-center justify-center text-xl md:text-2xl">
+                     ➖
+                   </div>
+           
+                   <div>
+                     <h1 className="text-xl md:text-3xl font-bold text-gray-800">
+                       Subtraction
+                     </h1>
+           
+                     <p className="text-xs md:text-sm text-gray-500">
+                       Practice subtraction with fun levels
+                     </p>
+                   </div>
+           
+                 </div>
+           
+               </div>
+           
+           
+               {/* RIGHT SECTION */}
+               <div className="flex flex-col items-start md:items-end gap-2">
+           
+                 <div className="text-sm font-semibold text-gray-600">
+                   ⭐ {totalStars} / {TOTAL_LEVELS * 3} Stars
+                 </div>
+           
+                 {/* Progress bar */}
+                 <div className="w-full md:w-64 bg-gray-200 rounded-full h-2 overflow-hidden">
+                   <div
+                     className="bg-green-500 h-2 transition-all duration-500"
+                     style={{
+                       width: `${(totalStars / (TOTAL_LEVELS * 3)) * 100}%`
+                     }}
+                   />
+                 </div>
+           
+                 {totalStars >= STARS_REQUIRED_TO_UNLOCK && (
+                   <span className="text-green-600 text-xs md:text-sm font-semibold">
+                     ✅ Multiplication unlocked
+                   </span>
+                 )}
+           
+               </div>
+           
+             </div>
+           
+           </div>
 
       <div className="flex justify-center pb-20 px-4">
         <div className="relative w-full h-[90vh]">
@@ -120,7 +197,7 @@ export default function Subtraction() {
                 key={level}
                 onClick={() => isUnlocked && setSelectedLevel(level)}
                 className={`absolute w-14 h-14 sm:w-16 sm:h-16 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg
-                  ${isUnlocked ? "bg-red-500 cursor-pointer hover:scale-110 transition-transform" : "bg-gray-400"}`}
+                  ${isUnlocked ? "bg-green-500 cursor-pointer hover:scale-110 transition-transform" : "bg-gray-400"}`}
                 style={{
                   left: `${pos.x}%`,
                   top: `${pos.y}%`,

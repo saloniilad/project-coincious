@@ -143,9 +143,9 @@ function ItemDisplay({ question, item }) {
   return (
     <div
       className="flex flex-col items-center justify-center gap-3 p-6
-      bg-gradient-to-b from-orange-50 to-white rounded-3xl border-2 border-orange-100 shadow-sm h-full"
+      bg-gradient-to-b from-pink-50 to-white rounded-3xl border-2 border-pink-100 shadow-sm h-full"
     >
-      <p className="text-xs font-black text-orange-400 tracking-widest uppercase">
+      <p className="text-xs font-black text-pink-400 tracking-widest uppercase">
         Buy This
       </p>
       {imgSrc ? (
@@ -156,7 +156,7 @@ function ItemDisplay({ question, item }) {
         />
       ) : (
         <div className="w-28 h-28 rounded-2xl bg-orange-100 flex items-center justify-center">
-          <ShoppingBag size={48} className="text-orange-400" />
+          <ShoppingBag size={48} className="text-pink-400" />
         </div>
       )}
       <p className="font-black text-slate-700 text-base text-center">{name}</p>
@@ -436,12 +436,12 @@ export default function WordProblemGame({
 
       <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-5">
         {/* Question banner */}
-        <div className="bg-gradient-to-r from-amber-100 to-orange-100 border-2 border-orange-200 rounded-2xl px-5 py-4 text-center">
-          <p className="text-base font-black text-orange-800 leading-snug">
+        <div className="bg-gradient-to-r from-amber-100 to-pink-100 border-2 border-pink-200 rounded-2xl px-5 py-4 text-center">
+          <p className="text-base font-black text-pink-800 leading-snug">
             {question.question_text}
           </p>
           {showHint && (
-            <p className="mt-2 text-sm text-orange-600 font-semibold">
+            <p className="mt-2 text-sm text-pink-600 font-semibold">
               💡 Hint: Find coins/notes that add up to ₹{target}
             </p>
           )}
@@ -639,7 +639,7 @@ export default function WordProblemGame({
                   ? "bg-emerald-400 text-white cursor-default flex items-center justify-center gap-2"
                   : walletTotal === 0
                     ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                    : "bg-orange-500 text-white hover:bg-orange-600 active:scale-95"
+                    : "bg-pink-500 text-white hover:bg-pink-600 active:scale-95"
               }`}
           >
             {submitted ? (

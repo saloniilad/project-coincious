@@ -40,7 +40,40 @@ function calculateStars(attempts, timeSpent, hintsUsed) {
   if (score >= 50) return 2;
   return 1;
 }
+const saveProgressToBackend = async (module, level, stars) => {
+  try {
+    const name = localStorage.getItem("user");
 
+    if (!name) {
+      console.error("User not found in localStorage");
+      return;
+    }
+
+    const res = await fetch(`${API_BASE}/progress/update/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: name,
+        module: module,
+        level: level,
+        stars: stars
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("Failed saving progress:", data);
+    } else {
+      console.log("✅ Progress saved:", data);
+    }
+
+  } catch (err) {
+    console.error("Progress save error:", err);
+  }
+};
 // ── Difficulty ladder ─────────────────────────────────────────────────────────
 const DIFFICULTY_STEPS = [
   "easy-basic",
@@ -426,9 +459,14 @@ export default function MathGame({
       setDeltaStars(delta);
       setPrevBestStars(prevBest);
 
-      const storageKey = `${module}_level_${level}_stars`;
-      const existing = Number(localStorage.getItem(storageKey)) || 0;
-      localStorage.setItem(storageKey, existing + delta);
+const storageKey = `${module}_level_${level}_stars`;
+
+const existing = Number(localStorage.getItem(storageKey)) || 0;
+const updatedStars = Math.max(existing, stars);
+
+localStorage.setItem(storageKey, updatedStars);
+
+await saveProgressToBackend(module, level, updatedStars);
 
       const unlockedKey = `${module}_unlocked`;
       const currentUnlocked = Number(localStorage.getItem(unlockedKey)) || 1;
@@ -469,7 +507,7 @@ export default function MathGame({
           <p className="text-red-500 font-semibold">{error}</p>
           <button
             onClick={loadQuestion}
-            className="bg-orange-500 text-white px-6 py-2 rounded-xl hover:bg-orange-600 transition"
+            className="bg-pink-500 text-white px-6 py-2 rounded-xl hover:bg-pink-600 transition"
           >
             Retry
           </button>
@@ -501,11 +539,10 @@ export default function MathGame({
             {[1, 2, 3].map((s) => (
               <span
                 key={s}
-                className={`transition-transform duration-300 ${
-                  s <= starsEarned
+                className={`transition-transform duration-300 ${s <= starsEarned
                     ? "text-yellow-400 scale-125"
                     : "text-gray-300"
-                }`}
+                  }`}
               >
                 ★
               </span>
@@ -558,13 +595,13 @@ export default function MathGame({
                 onComplete(level);
                 onBack();
               }}
-              className="bg-orange-500 text-white py-3 rounded-xl font-semibold hover:bg-orange-600 transition"
+              className="bg-pink-500 text-white py-3 rounded-xl font-semibold hover:bg-pink-600 transition"
             >
               🗺 Back to Map
             </button>
             <button
               onClick={loadQuestion}
-              className="border border-orange-400 text-orange-500 py-3 rounded-xl font-semibold hover:bg-orange-50 transition"
+              className="border border-pink-400 text-pink-500 py-3 rounded-xl font-semibold hover:bg-pink-50 transition"
             >
               🔄 Play Again
             </button>
@@ -593,7 +630,7 @@ export default function MathGame({
           <span className="bg-white text-gray-500 border text-xs px-3 py-1 rounded-full shadow-sm">
             {difficulty}
           </span>
-          <span className="bg-orange-500 text-white text-sm font-bold px-4 py-1 rounded-full shadow">
+          <span className="bg-pink-500 text-white text-sm font-bold px-4 py-1 rounded-full shadow">
             Level {level}
           </span>
         </div>
@@ -655,10 +692,9 @@ export default function MathGame({
                   key={idx}
                   onClick={() => handleMCQSelect(opt)}
                   className={`py-2 rounded-2xl text-sm font-bold transition border-2
-                    ${
-                      selectedOption === opt
-                        ? "bg-orange-500 text-white border-orange-500 scale-105"
-                        : "bg-gray-50 text-gray-800 border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+                    ${selectedOption === opt
+                      ? "bg-pink-500 text-white border-pink-500 scale-105"
+                      : "bg-gray-50 text-gray-800 border-gray-200 hover:border-pink-300 hover:bg-pink-50"
                     }`}
                 >
                   ₹{opt}
@@ -689,10 +725,9 @@ export default function MathGame({
             onClick={handleSubmit}
             disabled={isMCQ ? selectedOption === null : wordAnswer === ""}
             className={`w-full py-4 rounded-2xl text-white font-bold text-lg transition
-              ${
-                (isMCQ ? selectedOption !== null : wordAnswer !== "")
-                  ? "bg-orange-500 hover:bg-orange-600 shadow-md"
-                  : "bg-gray-300 cursor-not-allowed"
+              ${(isMCQ ? selectedOption !== null : wordAnswer !== "")
+                ? "bg-pink-500 hover:bg-pink-600 shadow-md"
+                : "bg-gray-300 cursor-not-allowed"
               }`}
           >
             ✅ Submit Answer
@@ -704,10 +739,9 @@ export default function MathGame({
               onClick={handleHint}
               disabled={hintsUsed >= 3}
               className={`flex items-center gap-2 text-sm px-4 py-2 rounded-xl transition
-                ${
-                  hintsUsed < 3
-                    ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                ${hintsUsed < 3
+                  ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
               <Lightbulb size={16} />

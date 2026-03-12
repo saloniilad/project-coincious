@@ -194,7 +194,59 @@ def save_progress(request):
     )
 
     return Response({'message': 'Progress saved successfully.'}, status=status.HTTP_200_OK)
+@api_view(['POST'])
+def update_level_progress(request):
+    """
+    POST /api/progress/update/
 
+    Body:
+    {
+        "name": "user",
+        "module": "addition",
+        "level": 1,
+        "stars": 3
+    }
+    """
+
+    name = request.data.get("name", "").strip()
+    module = request.data.get("module", "").strip().lower()
+    level = request.data.get("level")
+    stars = request.data.get("stars")
+
+    if not name or not module or level is None or stars is None:
+        return Response(
+            {"error": "name, module, level and stars are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        level = int(level)
+        stars = int(stars)
+    except ValueError:
+        return Response(
+            {"error": "level and stars must be integers"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    key = f"{module}_level_{level}_stars"
+
+    progress_col = get_progress_collection()
+
+    progress_col.update_one(
+        {"name": name},
+        {
+            "$set": {
+                f"progress.{key}": stars,
+                "name": name
+            }
+        },
+        upsert=True
+    )
+
+    return Response(
+        {"message": "Progress updated successfully"},
+        status=status.HTTP_200_OK
+    )
 
 @api_view(['GET'])
 def load_progress(request):
