@@ -215,18 +215,18 @@ export default function Multiplication() {
           })}
 
           {unlockedLevel && (
-            <div
-              className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
-              style={{
-                left: `${getLevelPos(unlockedLevel - 1).x}%`,
-                top: `${getLevelPos(unlockedLevel - 1).y}%`,
-                transform: "translate(-50%, -50%)",
-              }}
-            >
-              ✈️
+              <div
+                className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
+                style={{
+                  left: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).x}%`,
+                  top: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).y}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                ✈️
+              </div>
+            )}
             </div>
-          )}
-        </div>
       </div>
     </div>
   );
