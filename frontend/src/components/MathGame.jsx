@@ -1,26 +1,5 @@
 /**
  * MathGame.jsx
- * ============
- * Props:
- *   module    – "addition" | "subtraction" | "multiplication" | "division" | "wordproblems"
- *   symbol    – "+" | "−" | "×" | "÷" | "📖"
- *   level     – Number (1-10)
- *   onBack    – () => void   (called when user presses Back)
- *   onComplete – (level) => void  (called after level is finished)
- *
- * Behaviour
- * ---------
- * • On mount, checks if this level has been played before.
- *   – If YES  → load the exact same question (level revisit) via GET /api/math/level-question/
- *   – If NO   → fetch a fresh question at the correct starting difficulty via GET /api/math/question/
- * • An invisible timer starts the moment the question is displayed.
- * • The user picks an MCQ option (or types a word-problem answer).
- * • Wrong answer → attempts++ (question stays, user can try again).
- * • Correct answer → timer stops, stars calculated, attempt POSTed to backend.
- * • Stars are stored locally AND synced to the backend.
- * • next_difficulty from API drives the next question if the user wants to replay.
- * • Hint button (max 3) reveals part of the answer and increments hints_used.
- * • Currency images fetched from /api/math/currencies/?ids=... and shown in wallet.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -30,7 +9,6 @@ import WordProblemGame from "./WordProblemGame";
 const API_BASE = "http://localhost:8000/api";
 const IMAGE_BASE = import.meta.env.VITE_IMAGES || "http://127.0.0.1:8000";
 
-// ── Star calculation (mirrors backend logic) ──────────────────────────────────
 function calculateStars(attempts, timeSpent, hintsUsed) {
   let score = 100;
   score -= attempts * 5;
@@ -43,31 +21,21 @@ function calculateStars(attempts, timeSpent, hintsUsed) {
 
 const saveProgressToBackend = async (module, level, stars) => {
   try {
-    // Always read fresh from localStorage — never use a stale closure value
     const name = localStorage.getItem("user");
-    if (!name) {
-      console.error("User not found in localStorage");
-      return;
-    }
-
+    if (!name) return;
     const res = await fetch(`${API_BASE}/progress/update/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, module, level, stars }),
     });
-
     const data = await res.json();
-    if (!res.ok) {
-      console.error("Failed saving progress:", data);
-    } else {
-      console.log("✅ Progress saved:", data);
-    }
+    if (!res.ok) console.error("Failed saving progress:", data);
+    else console.log("✅ Progress saved:", data);
   } catch (err) {
     console.error("Progress save error:", err);
   }
 };
 
-// ── Difficulty ladder ─────────────────────────────────────────────────────────
 const DIFFICULTY_STEPS = [
   "easy-basic",
   "easy-moderate",
@@ -80,7 +48,6 @@ const DIFFICULTY_STEPS = [
   "hard-high",
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function generateHint(question) {
   if (!question) return "Think carefully! 🤔";
   const answer = question.expected_answer ?? question.correct_answer;
@@ -94,7 +61,6 @@ function generateHint(question) {
 // ── Currency Wallet UI ────────────────────────────────────────────────────────
 function CurrencyWallet({ images }) {
   const [zoomedIdx, setZoomedIdx] = useState(null);
-
   if (!images || images.length === 0) return null;
 
   return (
@@ -137,7 +103,7 @@ function CurrencyWallet({ images }) {
         })}
       </div>
 
-      {/* ── Zoom popup overlay ── */}
+      {/* Zoom popup */}
       {zoomedIdx !== null &&
         (() => {
           const c = images[zoomedIdx];
@@ -171,12 +137,7 @@ function CurrencyWallet({ images }) {
                   animation: "zoomIn 0.2s ease-out",
                 }}
               >
-                <style>{`
-                @keyframes zoomIn {
-                  from { transform: scale(0.7); opacity: 0; }
-                  to   { transform: scale(1);   opacity: 1; }
-                }
-              `}</style>
+                <style>{`@keyframes zoomIn { from{transform:scale(0.7);opacity:0} to{transform:scale(1);opacity:1} }`}</style>
                 <img
                   src={imgUrl}
                   alt={`₹${c.value}`}
@@ -218,6 +179,153 @@ function CurrencyWallet({ images }) {
   );
 }
 
+// ── Visual Question: "2 × [coin] = ?" or "[coin] ÷ 5 = ?" ───────────────────
+function VisualQuestion({ module, questionText, currencyImages }) {
+  const [zoomed, setZoomed] = useState(false);
+  if (!currencyImages || currencyImages.length === 0) return null;
+
+  const coin = currencyImages[0];
+  const path = coin.front_image.replace("/static/currency-images", "");
+  const imgUrl = `${IMAGE_BASE}${path}`;
+  const isCoin = coin.type === "coin";
+
+  // Multiplication: "2 × ₹10 = ?" → parts: ["2", "×", coin, "=", "?"]
+  // Division:       "₹50 ÷ 5 = ?" → parts: [coin, "÷", "5", "=", "?"]
+  let parts = null;
+  if (module === "multiplication") {
+    const match = questionText?.match(/^(\d+)\s*[×x\*]/);
+    if (match) parts = { left: match[1], op: "×", right: null };
+  } else if (module === "division") {
+    const match = questionText?.match(/[÷\/]\s*(\d+)/);
+    if (match) parts = { left: null, op: "÷", right: match[1] };
+  }
+
+  if (!parts) return null;
+
+  // Clickable coin image
+  const CoinImg = (
+    <div
+      className="flex flex-col items-center cursor-zoom-in group"
+      onClick={() => setZoomed(true)}
+    >
+      <div className="relative">
+        <img
+          src={imgUrl}
+          alt={`₹${coin.value}`}
+          className={`object-contain drop-shadow-md transition group-hover:scale-110
+            ${isCoin ? "w-20 h-20" : "w-32 h-16"}`}
+          onError={(e) => {
+            e.target.style.display = "none";
+          }}
+        />
+        <span className="absolute -top-2 -right-2 bg-white/80 text-pink-500 text-[9px] font-black px-1.5 py-0.5 rounded-full shadow border border-pink-200 backdrop-blur-sm">
+          🔍
+        </span>
+      </div>
+      <span className="text-xs text-pink-500 font-bold mt-1">
+        ₹{coin.value}
+      </span>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="flex items-center justify-center gap-4 flex-wrap mt-2 mb-1">
+        {/* Left side */}
+        {parts.left ? (
+          <span className="text-4xl font-black text-[#3b2f1e]">
+            {parts.left}
+          </span>
+        ) : (
+          CoinImg
+        )}
+
+        {/* Operator */}
+        <span className="text-3xl font-black text-pink-400">{parts.op}</span>
+
+        {/* Right side */}
+        {parts.right ? (
+          <span className="text-4xl font-black text-[#3b2f1e]">
+            {parts.right}
+          </span>
+        ) : (
+          CoinImg
+        )}
+
+        <span className="text-3xl font-black text-pink-400">=</span>
+        <span className="text-4xl font-black text-[#3b2f1e]">?</span>
+      </div>
+
+      {/* Zoom popup */}
+      {zoomed && (
+        <div
+          onClick={() => setZoomed(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            cursor: "zoom-out",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 24,
+              padding: "32px 40px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 16,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              animation: "zoomIn 0.2s ease-out",
+            }}
+          >
+            <style>{`@keyframes zoomIn{from{transform:scale(0.7);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
+            <img
+              src={imgUrl}
+              alt={`₹${coin.value}`}
+              style={{ width: 220, height: 220, objectFit: "contain" }}
+            />
+            <p style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>
+              ₹{coin.value}
+            </p>
+            <p
+              style={{
+                fontSize: 13,
+                color: "#9ca3af",
+                textTransform: "capitalize",
+              }}
+            >
+              {coin.type}
+            </p>
+            <button
+              onClick={() => setZoomed(false)}
+              style={{
+                marginTop: 4,
+                background: "linear-gradient(135deg,#ec4899,#f472b6)",
+                color: "white",
+                border: "none",
+                borderRadius: 12,
+                padding: "8px 28px",
+                fontWeight: 800,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              Close ✕
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function MathGame({
   module,
@@ -226,11 +334,8 @@ export default function MathGame({
   onBack,
   onComplete,
 }) {
-  // ── IMPORTANT: always read fresh from localStorage, never cache in a variable
-  //    at module scope. This prevents stale values after login/logout.
   const getProfileName = () => localStorage.getItem("user") || "Student";
 
-  // ── State ──────────────────────────────────────────────────────────────────
   const [question, setQuestion] = useState(null);
   const [currencyImages, setCurrencyImages] = useState([]);
   const [difficulty, setDifficulty] = useState(() => {
@@ -239,46 +344,37 @@ export default function MathGame({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
   const [selectedOption, setSelectedOption] = useState(null);
   const [wordAnswer, setWordAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
-
   const [attempts, setAttempts] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [hintMessages, setHintMessages] = useState([]);
   const [showHintPanel, setShowHintPanel] = useState(false);
-
   const [timeSpent, setTimeSpent] = useState(0);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
-
   const [showResult, setShowResult] = useState(false);
   const [starsEarned, setStarsEarned] = useState(0);
   const [deltaStars, setDeltaStars] = useState(0);
   const [prevBestStars, setPrevBestStars] = useState(0);
   const [savedQuestionId, setSavedQuestionId] = useState(null);
   const [isRevisit, setIsRevisit] = useState(false);
-  const loadingRef = useRef(false); // prevents concurrent loadQuestion calls
+  const loadingRef = useRef(false);
 
   const fetchCurrencyImages = useCallback(async (currencyIds) => {
     if (!currencyIds || currencyIds.length === 0) {
       setCurrencyImages([]);
       return;
     }
-
     try {
       const uniqueIds = [...new Set(currencyIds)];
       const res = await fetch(
         `${API_BASE}/math/currencies/?ids=${uniqueIds.join(",")}`,
       );
       const data = await res.json();
-
       const currencyMap = {};
-      for (const c of data.currencies || []) {
-        currencyMap[c.id] = c;
-      }
-
+      for (const c of data.currencies || []) currencyMap[c.id] = c;
       const expanded = currencyIds.map((id) => currencyMap[id]).filter(Boolean);
       setCurrencyImages(expanded);
     } catch (e) {
@@ -287,7 +383,6 @@ export default function MathGame({
     }
   }, []);
 
-  // ── Fetch question on mount ────────────────────────────────────────────────
   useEffect(() => {
     loadQuestion();
     return () => stopTimer();
@@ -295,12 +390,8 @@ export default function MathGame({
   }, []);
 
   const loadQuestion = useCallback(async () => {
-    // Prevent concurrent calls (React StrictMode mounts twice in dev)
-    // but allow intentional re-calls like "Play Again" by checking if
-    // we're already mid-load rather than blocking all future calls.
     if (loadingRef.current) return;
     loadingRef.current = true;
-
     setLoading(true);
     setError(null);
     setFeedback(null);
@@ -313,15 +404,11 @@ export default function MathGame({
     setShowResult(false);
     setCurrencyImages([]);
     stopTimer();
-    // Reset stale result state so Play Again works cleanly
     setStarsEarned(0);
     setDeltaStars(0);
     setPrevBestStars(0);
 
-    // ── Read user name fresh every time so post-login value is correct ────────
     const currentUser = getProfileName();
-
-    // ── Guard: if we still don't have a real user, show a clear error ─────────
     if (!currentUser || currentUser === "Student") {
       const stored = localStorage.getItem("user");
       if (!stored) {
@@ -332,27 +419,18 @@ export default function MathGame({
     }
 
     try {
-      // ── Step 1: Check if this level has been played before ─────────────────
       const revisitRes = await fetch(
         `${API_BASE}/math/level-question/?name=${encodeURIComponent(currentUser)}&module=${module}&level=${level}`,
       );
-
-      if (!revisitRes.ok) {
+      if (!revisitRes.ok)
         throw new Error(`Level-question lookup failed: ${revisitRes.status}`);
-      }
-
       const revisitData = await revisitRes.json();
 
       if (revisitData.question_id) {
-        // ── Revisit path: load the exact same question ─────────────────────
-        console.log(`🔄 Revisiting level ${level} — question ${revisitData.question_id}`);
-
         const byIdRes = await fetch(
           `${API_BASE}/math/question/by-id/?question_id=${revisitData.question_id}`,
         );
-
         if (byIdRes.ok) {
-          // Question still exists — show the same one
           const byIdData = await byIdRes.json();
           const q = byIdData.question;
           setIsRevisit(true);
@@ -361,27 +439,23 @@ export default function MathGame({
           setSavedQuestionId(revisitData.question_id);
           await fetchCurrencyImages(q?.currency_ids || []);
         } else {
-          // Question was deleted from DB — fall back to a fresh one silently
-          console.warn(
-            `⚠️ Previously played question ${revisitData.question_id} no longer exists. Loading a fresh question.`,
-          );
           setIsRevisit(false);
-          const fallbackDiff = revisitData.difficulty ||
-            (level === 1 ? "easy-basic" : localStorage.getItem(`${module}_next_difficulty`) || "easy-basic");
+          const fallbackDiff =
+            revisitData.difficulty ||
+            (level === 1
+              ? "easy-basic"
+              : localStorage.getItem(`${module}_next_difficulty`) ||
+                "easy-basic");
           setDifficulty(fallbackDiff);
           const freshQ = await fetchFreshQuestion(fallbackDiff);
           await fetchCurrencyImages(freshQ?.currency_ids || []);
         }
       } else {
-        // ── Fresh path: load a new question for this level ─────────────────
-        console.log(`🆕 First play of level ${level}`);
         setIsRevisit(false);
-
         const startDiff =
           level === 1
             ? "easy-basic"
             : localStorage.getItem(`${module}_next_difficulty`) || "easy-basic";
-
         setDifficulty(startDiff);
         const freshQ = await fetchFreshQuestion(startDiff);
         await fetchCurrencyImages(freshQ?.currency_ids || []);
@@ -394,7 +468,7 @@ export default function MathGame({
       setLoading(false);
       startTimer();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [module, level, fetchCurrencyImages]);
 
   const fetchFreshQuestion = async (diff) => {
@@ -408,27 +482,23 @@ export default function MathGame({
     return data.question;
   };
 
-  // ── Timer ──────────────────────────────────────────────────────────────────
   const startTimer = () => {
     startTimeRef.current = Date.now();
     timerRef.current = setInterval(() => {
       setTimeSpent(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
   };
-
   const stopTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   };
-
   const getElapsedSeconds = () => {
     if (!startTimeRef.current) return 0;
     return (Date.now() - startTimeRef.current) / 1000;
   };
 
-  // ── Hint ───────────────────────────────────────────────────────────────────
   const handleHint = () => {
     if (hintsUsed >= 3) return;
     const hints = generateHint(question);
@@ -437,7 +507,6 @@ export default function MathGame({
     setShowHintPanel(true);
   };
 
-  // ── Answer submission ──────────────────────────────────────────────────────
   const handleMCQSelect = (option) => {
     if (feedback === "correct") return;
     setSelectedOption(option);
@@ -445,14 +514,12 @@ export default function MathGame({
 
   const handleSubmit = async () => {
     if (!question) return;
-
     const userAnswer =
       question.problem_type === "mcq" ? selectedOption : Number(wordAnswer);
     const correctAnswer =
       question.problem_type === "mcq"
         ? question.correct_answer
         : question.expected_answer;
-
     const isCorrect = Number(userAnswer) === Number(correctAnswer);
 
     if (!isCorrect) {
@@ -466,15 +533,11 @@ export default function MathGame({
 
     stopTimer();
     setFeedback("correct");
-
     const elapsed = getElapsedSeconds();
     const finalAttempts = attempts + 1;
     const stars = calculateStars(finalAttempts, elapsed, hintsUsed);
-
     setStarsEarned(stars);
     setTimeSpent(Math.round(elapsed));
-
-    // Read user fresh here too — same reason as above
     const currentUser = getProfileName();
 
     try {
@@ -483,44 +546,36 @@ export default function MathGame({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: currentUser,
-          module: module,
-          level: level,
+          module,
+          level,
           question_id: question.question_id,
           attempts: finalAttempts,
           time_spent: Math.round(elapsed),
           hints_used: hintsUsed,
           user_answer: userAnswer,
-          difficulty: difficulty,
+          difficulty,
         }),
       });
-
       const data = await res.json();
-
       const delta = data.delta_stars ?? 0;
       const prevBest = data.previous_best_stars ?? 0;
       const nextDiff = data.next_difficulty ?? difficulty;
-
       setDifficulty(nextDiff);
       localStorage.setItem(`${module}_next_difficulty`, nextDiff);
       setDeltaStars(delta);
       setPrevBestStars(prevBest);
-
       const storageKey = `${module}_level_${level}_stars`;
       const existing = Number(localStorage.getItem(storageKey)) || 0;
       const updatedStars = Math.max(existing, stars);
       localStorage.setItem(storageKey, updatedStars);
-
       await saveProgressToBackend(module, level, updatedStars);
-
       const unlockedKey = `${module}_unlocked`;
       const currentUnlocked = Number(localStorage.getItem(unlockedKey)) || 1;
-      if (level >= currentUnlocked && level < 10) {
+      if (level >= currentUnlocked && level < 10)
         localStorage.setItem(unlockedKey, level + 1);
-      }
     } catch (e) {
       console.error("Failed to save attempt:", e);
     }
-
     setTimeout(() => setShowResult(true), 600);
   };
 
@@ -528,8 +583,8 @@ export default function MathGame({
     if (e.key === "Enter") handleSubmit();
   };
 
-  // ── Render: loading ────────────────────────────────────────────────────────
-  if (loading) {
+  // ── Render: loading ───────────────────────────────────────────────────────
+  if (loading)
     return (
       <div className="min-h-screen bg-[#f3f1ee] flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -540,10 +595,9 @@ export default function MathGame({
         </div>
       </div>
     );
-  }
 
-  // ── Render: error ──────────────────────────────────────────────────────────
-  if (error) {
+  // ── Render: error ─────────────────────────────────────────────────────────
+  if (error)
     return (
       <div className="min-h-screen bg-[#f3f1ee] flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl p-8 shadow-lg text-center space-y-4 max-w-sm">
@@ -564,36 +618,28 @@ export default function MathGame({
         </div>
       </div>
     );
-  }
 
-  // ── Render: result screen ──────────────────────────────────────────────────
-  if (showResult) {
+  // ── Render: result screen ─────────────────────────────────────────────────
+  if (showResult)
     return (
       <div className="min-h-screen bg-[#f3f1ee] flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl p-8 shadow-xl max-w-sm w-full text-center space-y-5">
           <div className="text-5xl">
             {starsEarned === 3 ? "🎉" : starsEarned === 2 ? "👍" : "💪"}
           </div>
-
           <h2 className="text-2xl font-bold text-[#3b2f1e]">
             Level {level} Complete!
           </h2>
-
           <div className="flex justify-center gap-2 text-4xl">
             {[1, 2, 3].map((s) => (
               <span
                 key={s}
-                className={`transition-transform duration-300 ${
-                  s <= starsEarned
-                    ? "text-yellow-400 scale-125"
-                    : "text-gray-300"
-                }`}
+                className={`transition-transform duration-300 ${s <= starsEarned ? "text-yellow-400 scale-125" : "text-gray-300"}`}
               >
                 ★
               </span>
             ))}
           </div>
-
           <p className="text-gray-600 font-medium">
             {starsEarned === 3
               ? "Perfect! Excellent work! 🌟"
@@ -601,7 +647,6 @@ export default function MathGame({
                 ? "Great job! Keep it up!"
                 : "Good effort! Practice makes perfect!"}
           </p>
-
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
             <div className="flex justify-between">
               <span>⏱ Time</span>
@@ -616,7 +661,6 @@ export default function MathGame({
               <span>{hintsUsed}</span>
             </div>
           </div>
-
           {deltaStars > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-green-700 text-sm font-medium">
               +{deltaStars} ⭐ added to your total!
@@ -633,7 +677,6 @@ export default function MathGame({
               added.
             </div>
           )}
-
           <div className="flex flex-col gap-3 pt-2">
             <button
               onClick={() => {
@@ -654,10 +697,16 @@ export default function MathGame({
         </div>
       </div>
     );
-  }
 
-  // ── Render: question screen ────────────────────────────────────────────────
+  // ── Render: question screen ───────────────────────────────────────────────
   const isMCQ = question?.problem_type === "mcq";
+  const isVisualQuestion =
+    (module === "multiplication" &&
+      currencyImages.length > 0 &&
+      question?.question_text?.match(/^(\d+)\s*[×x\*]/)) ||
+    (module === "division" &&
+      currencyImages.length > 0 &&
+      question?.question_text?.match(/[÷\/]\s*(\d+)/));
 
   return (
     <div className="min-h-screen bg-[#f3f1ee] flex flex-col">
@@ -667,10 +716,8 @@ export default function MathGame({
           onClick={onBack}
           className="bg-blue-200 text-blue-800 px-4 py-2 rounded-2xl flex items-center gap-2 hover:bg-blue-300 transition text-sm"
         >
-          <ChevronLeft size={16} />
-          Back
+          <ChevronLeft size={16} /> Back
         </button>
-
         <div className="flex items-center gap-3">
           <span className="bg-white text-gray-500 border text-xs px-3 py-1 rounded-full shadow-sm">
             {difficulty}
@@ -681,25 +728,25 @@ export default function MathGame({
         </div>
       </div>
 
-      {/* Main card — wider and taller */}
+      {/* Main card */}
       <div className="flex-1 flex items-center justify-center px-4 py-6">
         <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-8 space-y-6">
-          {/* Question header + wallet */}
+          {/* Question header */}
           <div className="text-center">
-            {/* Enhanced symbol badge */}
+            {/* Pink symbol badge */}
             <div className="flex justify-center mb-3">
               <div
                 style={{
-                  background: "linear-gradient(135deg, #ec4899, #f472b6)",
+                  background: "linear-gradient(135deg,#ec4899,#f472b6)",
                   borderRadius: "50%",
-                  width: 64,
-                  height: 64,
+                  width: 44,
+                  height: 44,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   boxShadow:
-                    "0 4px 18px rgba(236,72,153,0.45), 0 1px 4px rgba(0,0,0,0.1)",
-                  fontSize: 32,
+                    "0 4px 18px rgba(236,72,153,0.45),0 1px 4px rgba(0,0,0,0.1)",
+                  fontSize: 22,
                   fontWeight: 900,
                   color: "white",
                   letterSpacing: "-1px",
@@ -709,17 +756,28 @@ export default function MathGame({
                 {symbol}
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-[#3b2f1e] leading-snug">
-              {question?.question_text}
-            </h2>
+
+            {/* Multiplication / Division: show visual "[coin] ÷ 5 = ?" or "2 × [coin] = ?" */}
+            {isVisualQuestion ? (
+              <VisualQuestion
+                module={module}
+                questionText={question?.question_text}
+                currencyImages={currencyImages}
+              />
+            ) : (
+              <h2 className="text-2xl font-bold text-[#3b2f1e] leading-snug">
+                {question?.question_text}
+              </h2>
+            )}
+
             {isRevisit && (
               <span className="text-xs text-gray-400 mt-1 block">
                 (Revisiting this level)
               </span>
             )}
 
-            {/* Currency wallet */}
-            <CurrencyWallet images={currencyImages} />
+            {/* Currency wallet — hidden for multiplication/division (coin shown in question row) */}
+            {!isVisualQuestion && <CurrencyWallet images={currencyImages} />}
           </div>
 
           {/* Wrong-answer flash */}
@@ -729,7 +787,7 @@ export default function MathGame({
             </div>
           )}
 
-          {/* MCQ options — slightly smaller */}
+          {/* MCQ options */}
           {isMCQ && question?.options && (
             <div className="grid grid-cols-2 gap-3">
               {question.options.map((opt, idx) => (
@@ -761,7 +819,7 @@ export default function MathGame({
                 onChange={(e) => setWordAnswer(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Enter amount…"
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg font-bold text-center focus:border-orange-400 focus:outline-none"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg font-bold text-center focus:border-pink-400 focus:outline-none"
               />
             </div>
           )}
@@ -780,7 +838,7 @@ export default function MathGame({
             ✅ Submit Answer
           </button>
 
-          {/* Hint button + timer */}
+          {/* Hint + timer */}
           <div className="flex justify-between items-center">
             <button
               onClick={handleHint}
@@ -792,13 +850,10 @@ export default function MathGame({
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
-              <Lightbulb size={16} />
-              Hint ({3 - hintsUsed} left)
+              <Lightbulb size={16} /> Hint ({3 - hintsUsed} left)
             </button>
-
             <div className="flex items-center gap-1 text-gray-400 text-xs">
-              <Clock size={13} />
-              {timeSpent}s
+              <Clock size={13} /> {timeSpent}s
             </div>
           </div>
 
