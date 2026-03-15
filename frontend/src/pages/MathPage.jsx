@@ -25,13 +25,9 @@ const ModuleCard = ({ icon, color, title, subtitle, locked, stats, onClick }) =>
         <p className="text-gray-500 text-sm">
           {locked ? subtitle : `⭐ ${stats.stars} stars | 🏆 ${stats.levels} levels`}
         </p>
-        {!locked && stats.stars > 0 && (
-          <div className="flex gap-0.5 mt-1">
-            {Array.from({ length: Math.min(stats.stars, 30) }).map((_, i) => (
-              <span key={i} className="text-yellow-400 text-xs">★</span>
-            ))}
-          </div>
-        )}
+        
+          
+
       </div>
     </div>
     {!locked && <ChevronRight className="text-gray-400 shrink-0" />}
