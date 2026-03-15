@@ -40,10 +40,11 @@ function calculateStars(attempts, timeSpent, hintsUsed) {
   if (score >= 50) return 2;
   return 1;
 }
+
 const saveProgressToBackend = async (module, level, stars) => {
   try {
+    // Always read fresh from localStorage — never use a stale closure value
     const name = localStorage.getItem("user");
-
     if (!name) {
       console.error("User not found in localStorage");
       return;
@@ -51,29 +52,21 @@ const saveProgressToBackend = async (module, level, stars) => {
 
     const res = await fetch(`${API_BASE}/progress/update/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        name: name,
-        module: module,
-        level: level,
-        stars: stars
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, module, level, stars }),
     });
 
     const data = await res.json();
-
     if (!res.ok) {
       console.error("Failed saving progress:", data);
     } else {
       console.log("✅ Progress saved:", data);
     }
-
   } catch (err) {
     console.error("Progress save error:", err);
   }
 };
+
 // ── Difficulty ladder ─────────────────────────────────────────────────────────
 const DIFFICULTY_STEPS = [
   "easy-basic",
@@ -224,6 +217,7 @@ function CurrencyWallet({ images }) {
     </div>
   );
 }
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function MathGame({
   module,
@@ -232,7 +226,9 @@ export default function MathGame({
   onBack,
   onComplete,
 }) {
-  const profileName = localStorage.getItem("user") || "Student";
+  // ── IMPORTANT: always read fresh from localStorage, never cache in a variable
+  //    at module scope. This prevents stale values after login/logout.
+  const getProfileName = () => localStorage.getItem("user") || "Student";
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [question, setQuestion] = useState(null);
@@ -263,6 +259,7 @@ export default function MathGame({
   const [prevBestStars, setPrevBestStars] = useState(0);
   const [savedQuestionId, setSavedQuestionId] = useState(null);
   const [isRevisit, setIsRevisit] = useState(false);
+  const loadingRef = useRef(false); // prevents concurrent loadQuestion calls
 
   const fetchCurrencyImages = useCallback(async (currencyIds) => {
     if (!currencyIds || currencyIds.length === 0) {
@@ -283,7 +280,6 @@ export default function MathGame({
       }
 
       const expanded = currencyIds.map((id) => currencyMap[id]).filter(Boolean);
-
       setCurrencyImages(expanded);
     } catch (e) {
       console.error("🪙 Failed to fetch currency images:", e);
@@ -299,6 +295,12 @@ export default function MathGame({
   }, []);
 
   const loadQuestion = useCallback(async () => {
+    // Prevent concurrent calls (React StrictMode mounts twice in dev)
+    // but allow intentional re-calls like "Play Again" by checking if
+    // we're already mid-load rather than blocking all future calls.
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
     setLoading(true);
     setError(null);
     setFeedback(null);
@@ -311,54 +313,95 @@ export default function MathGame({
     setShowResult(false);
     setCurrencyImages([]);
     stopTimer();
+    // Reset stale result state so Play Again works cleanly
+    setStarsEarned(0);
+    setDeltaStars(0);
+    setPrevBestStars(0);
+
+    // ── Read user name fresh every time so post-login value is correct ────────
+    const currentUser = getProfileName();
+
+    // ── Guard: if we still don't have a real user, show a clear error ─────────
+    if (!currentUser || currentUser === "Student") {
+      const stored = localStorage.getItem("user");
+      if (!stored) {
+        setError("You must be logged in to play. Please log in and try again.");
+        setLoading(false);
+        return;
+      }
+    }
 
     try {
+      // ── Step 1: Check if this level has been played before ─────────────────
       const revisitRes = await fetch(
-        `${API_BASE}/math/level-question/?name=${encodeURIComponent(profileName)}&module=${module}&level=${level}`,
+        `${API_BASE}/math/level-question/?name=${encodeURIComponent(currentUser)}&module=${module}&level=${level}`,
       );
+
+      if (!revisitRes.ok) {
+        throw new Error(`Level-question lookup failed: ${revisitRes.status}`);
+      }
+
       const revisitData = await revisitRes.json();
 
       if (revisitData.question_id) {
-        setIsRevisit(true);
-        setDifficulty(revisitData.difficulty);
+        // ── Revisit path: load the exact same question ─────────────────────
+        console.log(`🔄 Revisiting level ${level} — question ${revisitData.question_id}`);
 
         const byIdRes = await fetch(
           `${API_BASE}/math/question/by-id/?question_id=${revisitData.question_id}`,
         );
-        const byIdData = await byIdRes.json();
-        const q = byIdData.question;
 
-        setQuestion(q);
-        setSavedQuestionId(revisitData.question_id);
-        await fetchCurrencyImages(q?.currency_ids || []);
-      } else {
-        setIsRevisit(false);
-
-        if (level === 1) {
-          setDifficulty("easy-basic");
-          const freshQ = await fetchFreshQuestion("easy-basic");
-          await fetchCurrencyImages(freshQ?.currency_ids || []);
+        if (byIdRes.ok) {
+          // Question still exists — show the same one
+          const byIdData = await byIdRes.json();
+          const q = byIdData.question;
+          setIsRevisit(true);
+          setDifficulty(revisitData.difficulty);
+          setQuestion(q);
+          setSavedQuestionId(revisitData.question_id);
+          await fetchCurrencyImages(q?.currency_ids || []);
         } else {
-          const savedDiff =
-            localStorage.getItem(`${module}_next_difficulty`) || "easy-basic";
-          setDifficulty(savedDiff);
-          const freshQ = await fetchFreshQuestion(savedDiff);
+          // Question was deleted from DB — fall back to a fresh one silently
+          console.warn(
+            `⚠️ Previously played question ${revisitData.question_id} no longer exists. Loading a fresh question.`,
+          );
+          setIsRevisit(false);
+          const fallbackDiff = revisitData.difficulty ||
+            (level === 1 ? "easy-basic" : localStorage.getItem(`${module}_next_difficulty`) || "easy-basic");
+          setDifficulty(fallbackDiff);
+          const freshQ = await fetchFreshQuestion(fallbackDiff);
           await fetchCurrencyImages(freshQ?.currency_ids || []);
         }
+      } else {
+        // ── Fresh path: load a new question for this level ─────────────────
+        console.log(`🆕 First play of level ${level}`);
+        setIsRevisit(false);
+
+        const startDiff =
+          level === 1
+            ? "easy-basic"
+            : localStorage.getItem(`${module}_next_difficulty`) || "easy-basic";
+
+        setDifficulty(startDiff);
+        const freshQ = await fetchFreshQuestion(startDiff);
+        await fetchCurrencyImages(freshQ?.currency_ids || []);
       }
     } catch (e) {
+      console.error("loadQuestion error:", e);
       setError("Failed to load question. Please check your connection.");
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       startTimer();
     }
-  }, [module, level, profileName, fetchCurrencyImages]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [module, level, fetchCurrencyImages]);
 
   const fetchFreshQuestion = async (diff) => {
     const res = await fetch(
       `${API_BASE}/math/question/?module=${module}&difficulty=${diff}`,
     );
-    if (!res.ok) throw new Error("No question found");
+    if (!res.ok) throw new Error(`No question found for ${module}/${diff}`);
     const data = await res.json();
     setQuestion(data.question);
     setSavedQuestionId(null);
@@ -431,12 +474,15 @@ export default function MathGame({
     setStarsEarned(stars);
     setTimeSpent(Math.round(elapsed));
 
+    // Read user fresh here too — same reason as above
+    const currentUser = getProfileName();
+
     try {
       const res = await fetch(`${API_BASE}/math/attempt/save/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: profileName,
+          name: currentUser,
           module: module,
           level: level,
           question_id: question.question_id,
@@ -459,14 +505,12 @@ export default function MathGame({
       setDeltaStars(delta);
       setPrevBestStars(prevBest);
 
-const storageKey = `${module}_level_${level}_stars`;
+      const storageKey = `${module}_level_${level}_stars`;
+      const existing = Number(localStorage.getItem(storageKey)) || 0;
+      const updatedStars = Math.max(existing, stars);
+      localStorage.setItem(storageKey, updatedStars);
 
-const existing = Number(localStorage.getItem(storageKey)) || 0;
-const updatedStars = Math.max(existing, stars);
-
-localStorage.setItem(storageKey, updatedStars);
-
-await saveProgressToBackend(module, level, updatedStars);
+      await saveProgressToBackend(module, level, updatedStars);
 
       const unlockedKey = `${module}_unlocked`;
       const currentUnlocked = Number(localStorage.getItem(unlockedKey)) || 1;
@@ -539,10 +583,11 @@ await saveProgressToBackend(module, level, updatedStars);
             {[1, 2, 3].map((s) => (
               <span
                 key={s}
-                className={`transition-transform duration-300 ${s <= starsEarned
+                className={`transition-transform duration-300 ${
+                  s <= starsEarned
                     ? "text-yellow-400 scale-125"
                     : "text-gray-300"
-                  }`}
+                }`}
               >
                 ★
               </span>
@@ -692,9 +737,10 @@ await saveProgressToBackend(module, level, updatedStars);
                   key={idx}
                   onClick={() => handleMCQSelect(opt)}
                   className={`py-2 rounded-2xl text-sm font-bold transition border-2
-                    ${selectedOption === opt
-                      ? "bg-pink-500 text-white border-pink-500 scale-105"
-                      : "bg-gray-50 text-gray-800 border-gray-200 hover:border-pink-300 hover:bg-pink-50"
+                    ${
+                      selectedOption === opt
+                        ? "bg-pink-500 text-white border-pink-500 scale-105"
+                        : "bg-gray-50 text-gray-800 border-gray-200 hover:border-pink-300 hover:bg-pink-50"
                     }`}
                 >
                   ₹{opt}
@@ -725,9 +771,10 @@ await saveProgressToBackend(module, level, updatedStars);
             onClick={handleSubmit}
             disabled={isMCQ ? selectedOption === null : wordAnswer === ""}
             className={`w-full py-4 rounded-2xl text-white font-bold text-lg transition
-              ${(isMCQ ? selectedOption !== null : wordAnswer !== "")
-                ? "bg-pink-500 hover:bg-pink-600 shadow-md"
-                : "bg-gray-300 cursor-not-allowed"
+              ${
+                (isMCQ ? selectedOption !== null : wordAnswer !== "")
+                  ? "bg-pink-500 hover:bg-pink-600 shadow-md"
+                  : "bg-gray-300 cursor-not-allowed"
               }`}
           >
             ✅ Submit Answer
@@ -739,9 +786,10 @@ await saveProgressToBackend(module, level, updatedStars);
               onClick={handleHint}
               disabled={hintsUsed >= 3}
               className={`flex items-center gap-2 text-sm px-4 py-2 rounded-xl transition
-                ${hintsUsed < 3
-                  ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                ${
+                  hintsUsed < 3
+                    ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
               <Lightbulb size={16} />
