@@ -3,8 +3,7 @@ import Navbar from "../components/Navbar";
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const BASE_URL =
-   import.meta.env.VITE_IMAGES;
+const BASE_URL = import.meta.env.VITE_IMAGES;
 
 const currencyData = [
   { value: 1, type: "coin" },
@@ -28,8 +27,7 @@ export default function Study() {
 
   const currentItem = currencyData[currentIndex];
 
-  const folder =
-    currentItem.type === "coin" ? "Coins" : "Notes";
+  const folder = currentItem.type === "coin" ? "Coins" : "Notes";
 
   const frontImg = `${BASE_URL}/${folder}/${currentItem.value}/v1/front.png`;
   const backImg = `${BASE_URL}/${folder}/${currentItem.value}/v1/back.png`;
@@ -50,17 +48,14 @@ export default function Study() {
 
   return (
     <div className="min-h-screen bg-[#f3f1ee]">
-      <Navbar profileName="Nausheen" />
+      <Navbar profileName={localStorage.getItem("user") || "Guest"} />
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-
         {/* Title */}
         <div className="text-center mb-6">
           <div className="flex justify-center items-center gap-2 text-orange-600">
             <BookOpen />
-            <h1 className="text-2xl font-bold">
-              Study Indian Currency
-            </h1>
+            <h1 className="text-2xl font-bold">Study Indian Currency</h1>
           </div>
           <p className="text-gray-500 mt-2">
             Learn about all Indian Rupee denominations
@@ -73,9 +68,7 @@ export default function Study() {
             <div
               key={i}
               className={`w-3 h-3 rounded-full ${
-                i === currentIndex
-                  ? "bg-orange-500"
-                  : "bg-gray-300"
+                i === currentIndex ? "bg-orange-500" : "bg-gray-300"
               }`}
             />
           ))}
@@ -83,13 +76,10 @@ export default function Study() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-lg p-8 border border-orange-200 text-center">
-
           {/* Flip Area */}
           <div
             className={`mx-auto mb-6 perspective cursor-pointer ${
-              currentItem.type === "note"
-                ? "w-64 h-40"
-                : "w-32 h-32"
+              currentItem.type === "note" ? "w-64 h-40" : "w-32 h-32"
             }`}
             onClick={() => setFlipped(!flipped)}
           >
@@ -120,8 +110,7 @@ export default function Study() {
 
           {/* Info */}
           <h2 className="text-3xl font-bold mb-2">
-            ₹{currentItem.value}{" "}
-            {currentItem.type === "coin" ? "Coin" : "Note"}
+            ₹{currentItem.value} {currentItem.type === "coin" ? "Coin" : "Note"}
           </h2>
 
           <div className="inline-block bg-yellow-100 text-sm px-3 py-1 rounded-full mb-4">
@@ -132,9 +121,7 @@ export default function Study() {
             ₹{currentItem.value}
           </div>
 
-          <p className="text-sm text-gray-500 mt-4">
-            Tap to flip!
-          </p>
+          <p className="text-sm text-gray-500 mt-4">Tap to flip!</p>
         </div>
 
         {/* Navigation */}
@@ -154,25 +141,22 @@ export default function Study() {
 
           <button
             onClick={nextSlide}
-            disabled={
-              currentIndex === currencyData.length - 1
-            }
+            disabled={currentIndex === currencyData.length - 1}
             className="flex items-center gap-1 px-4 py-2 bg-gray-200 rounded-xl disabled:opacity-50"
           >
             Next
             <ChevronRight size={16} />
           </button>
-          
         </div>
         {/* Back To Home */}
-                <div className="pt-6">
-                    <button
-                        onClick={() => navigate("/home")}
-                        className="w-full bg-pink-500 text-white py-3 rounded-xl shadow hover:bg-pink-600 transition flex items-center justify-center gap-2"
-                    >
-                        ← Back to Home
-                    </button>
-                </div>
+        <div className="pt-6">
+          <button
+            onClick={() => navigate("/home")}
+            className="w-full bg-pink-500 text-white py-3 rounded-xl shadow hover:bg-pink-600 transition flex items-center justify-center gap-2"
+          >
+            ← Back to Home
+          </button>
+        </div>
       </div>
     </div>
   );

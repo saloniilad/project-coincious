@@ -69,7 +69,7 @@ export default function AuthPage() {
           body: JSON.stringify({ name, password }),
         });
         const data = await res.json();
-        console.log("LOGIN RESPONSE:", data)
+        console.log("LOGIN RESPONSE:", data);
 
         if (!res.ok) throw new Error(data.error || "Login failed");
 
@@ -239,7 +239,7 @@ export default function AuthPage() {
                   </label>
                   <input
                     type="text"
-                    placeholder="Nausheen"
+                    placeholder="Username"
                     className="w-full px-4 py-3 rounded-xl bg-[#e9e5df] border border-[#d5cec3] focus:outline-none focus:ring-2 focus:ring-orange-400"
                     required
                   />
