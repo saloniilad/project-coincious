@@ -17,7 +17,7 @@ export default function Division() {
   const loadProgressFromBackend = async (name) => {
   try {
     const res = await fetch(
-      `http://localhost:8000/api/progress/load/?name=${encodeURIComponent(name)}`
+      `${import.meta.env.VITE_API}/progress/load/?name=${encodeURIComponent(name)}`
     );
 
     const data = await res.json();

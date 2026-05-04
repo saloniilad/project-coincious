@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import { useLocation } from "react-router-dom";
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API;
 
 const MODULES = [
   { name: "addition", label: "Addition", icon: "➕" },
