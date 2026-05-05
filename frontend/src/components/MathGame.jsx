@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronLeft, Lightbulb, Clock } from "lucide-react";
+import { ChevronLeft, Lightbulb, Clock, Volume2, VolumeX } from "lucide-react";
 import WordProblemGame from "./WordProblemGame";
 
 const API_BASE = "http://localhost:8000/api";
@@ -189,8 +189,6 @@ function VisualQuestion({ module, questionText, currencyImages }) {
   const imgUrl = `${IMAGE_BASE}${path}`;
   const isCoin = coin.type === "coin";
 
-  // Multiplication: "2 × ₹10 = ?" → parts: ["2", "×", coin, "=", "?"]
-  // Division:       "₹50 ÷ 5 = ?" → parts: [coin, "÷", "5", "=", "?"]
   let parts = null;
   if (module === "multiplication") {
     const match = questionText?.match(/^(\d+)\s*[×x\*]/);
@@ -202,7 +200,6 @@ function VisualQuestion({ module, questionText, currencyImages }) {
 
   if (!parts) return null;
 
-  // Clickable coin image
   const CoinImg = (
     <div
       className="flex flex-col items-center cursor-zoom-in group"
@@ -231,7 +228,6 @@ function VisualQuestion({ module, questionText, currencyImages }) {
   return (
     <>
       <div className="flex items-center justify-center gap-4 flex-wrap mt-2 mb-1">
-        {/* Left side */}
         {parts.left ? (
           <span className="text-4xl font-black text-[#3b2f1e]">
             {parts.left}
@@ -239,11 +235,7 @@ function VisualQuestion({ module, questionText, currencyImages }) {
         ) : (
           CoinImg
         )}
-
-        {/* Operator */}
         <span className="text-3xl font-black text-pink-400">{parts.op}</span>
-
-        {/* Right side */}
         {parts.right ? (
           <span className="text-4xl font-black text-[#3b2f1e]">
             {parts.right}
@@ -251,12 +243,10 @@ function VisualQuestion({ module, questionText, currencyImages }) {
         ) : (
           CoinImg
         )}
-
         <span className="text-3xl font-black text-pink-400">=</span>
         <span className="text-4xl font-black text-[#3b2f1e]">?</span>
       </div>
 
-      {/* Zoom popup */}
       {zoomed && (
         <div
           onClick={() => setZoomed(false)}
@@ -356,11 +346,15 @@ export default function MathGame({
   const startTimeRef = useRef(null);
   const [showResult, setShowResult] = useState(false);
   const [starsEarned, setStarsEarned] = useState(0);
+  const [listening, setListening] = useState(false);
   const [deltaStars, setDeltaStars] = useState(0);
   const [prevBestStars, setPrevBestStars] = useState(0);
   const [savedQuestionId, setSavedQuestionId] = useState(null);
   const [isRevisit, setIsRevisit] = useState(false);
   const loadingRef = useRef(false);
+
+  // ── NEW: tracks whether speech is currently playing ──────────────────────
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const fetchCurrencyImages = useCallback(async (currencyIds) => {
     if (!currencyIds || currencyIds.length === 0) {
@@ -385,7 +379,11 @@ export default function MathGame({
 
   useEffect(() => {
     loadQuestion();
-    return () => stopTimer();
+    return () => {
+      stopTimer();
+      // Stop any ongoing speech when the component unmounts
+      window.speechSynthesis?.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -502,9 +500,12 @@ export default function MathGame({
   const handleHint = () => {
     if (hintsUsed >= 3) return;
     const hints = generateHint(question);
-    setHintMessages((prev) => [...prev, hints[hintsUsed]]);
+    const hintText = hints[hintsUsed];
+    setHintMessages((prev) => [...prev, hintText]);
     setHintsUsed((h) => h + 1);
     setShowHintPanel(true);
+    // Also read the hint aloud so kids don't need to read it
+    speakQuestion(hintText);
   };
 
   const handleMCQSelect = (option) => {
@@ -512,10 +513,14 @@ export default function MathGame({
     setSelectedOption(option);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (directAnswer = null) => {
     if (!question) return;
     const userAnswer =
-      question.problem_type === "mcq" ? selectedOption : Number(wordAnswer);
+      directAnswer !== null
+        ? directAnswer
+        : question.problem_type === "mcq"
+          ? selectedOption
+          : Number(wordAnswer);
     const correctAnswer =
       question.problem_type === "mcq"
         ? question.correct_answer
@@ -581,6 +586,107 @@ export default function MathGame({
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleSubmit();
+  };
+
+  // ── UPDATED speakQuestion ─────────────────────────────────────────────────
+  // Changes vs original:
+  //   • rate 0.9 → 0.65  (noticeably slower for neurodiverse kids)
+  //   • pitch 1.1         (slightly warmer, friendlier tone)
+  //   • symbols replaced with words so the voice reads them naturally
+  //   • onstart / onend / onerror update isSpeaking state for button feedback
+  const speakQuestion = (text) => {
+    if (!window.speechSynthesis || !text) return;
+
+    // Replace ₹NUMBER with "rupees NUMBER," so the voice pauses after each amount
+    // Then add commas around operators so the voice pauses before and after each one
+    const readable = text
+      .replace(/₹/g, "rupees ")
+      .replace(/\+/g, " plus ")
+      .replace(/\p{Dash}/gu, " minus ")
+      .replace(/×/g, " times ")
+      .replace(/÷/g, " divided by ")
+      .replace(/=/g, " equals ")
+      .replace(/\?/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(readable);
+    utterance.lang = "en-IN";
+    utterance.rate = 0.65; // slow & clear
+    utterance.pitch = 1.1; // warm, friendly tone
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+  };
+
+  const startListening = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice not supported in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+
+    recognition.onstart = () => setListening(true);
+
+    recognition.onresult = (event) => {
+      const speech = event.results[0][0].transcript.toLowerCase();
+
+      const numberMap = {
+        zero: 0,
+        one: 1,
+        two: 2,
+        three: 3,
+        four: 4,
+        five: 5,
+        six: 6,
+        seven: 7,
+        eight: 8,
+        nine: 9,
+        ten: 10,
+      };
+
+      let detectedNumber = null;
+
+      Object.keys(numberMap).forEach((word) => {
+        if (speech.includes(word)) {
+          detectedNumber = numberMap[word];
+        }
+      });
+
+      if (detectedNumber === null) {
+        const num = speech.match(/\d+/);
+        if (num) detectedNumber = Number(num[0]);
+      }
+
+      if (detectedNumber !== null) {
+        if (question.problem_type === "mcq") {
+          setSelectedOption(detectedNumber);
+        } else {
+          setWordAnswer(String(detectedNumber));
+        }
+        // Pass the answer directly so we don't rely on stale state
+        setTimeout(() => handleSubmit(detectedNumber), 800);
+      } else {
+        alert("Could not understand. Please try again.");
+      }
+    };
+
+    recognition.onend = () => setListening(false);
+    recognition.start();
   };
 
   // ── Render: loading ───────────────────────────────────────────────────────
@@ -757,7 +863,7 @@ export default function MathGame({
               </div>
             </div>
 
-            {/* Multiplication / Division: show visual "[coin] ÷ 5 = ?" or "2 × [coin] = ?" */}
+            {/* Question text */}
             {isVisualQuestion ? (
               <VisualQuestion
                 module={module}
@@ -776,7 +882,63 @@ export default function MathGame({
               </span>
             )}
 
-            {/* Currency wallet — hidden for multiplication/division (coin shown in question row) */}
+            {/* ── NEW: Read Question button ──────────────────────────────── */}
+            {/* Appears right below the question so kids can tap it any time  */}
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={() =>
+                  isSpeaking
+                    ? stopSpeaking()
+                    : speakQuestion(question?.question_text)
+                }
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-base transition-all shadow-md select-none
+                  ${
+                    isSpeaking
+                      ? "bg-blue-500 text-white scale-105 shadow-blue-200"
+                      : "bg-blue-100 text-blue-700 hover:bg-blue-200 hover:scale-105"
+                  }`}
+                aria-label={isSpeaking ? "Stop reading" : "Read question aloud"}
+              >
+                {isSpeaking ? (
+                  <>
+                    <VolumeX size={20} />
+                    <span className="flex items-center gap-1">
+                      Reading
+                      {/* Animated bars to show the voice is active */}
+                      <span
+                        style={{
+                          display: "flex",
+                          gap: 3,
+                          alignItems: "flex-end",
+                          height: 18,
+                          marginLeft: 4,
+                        }}
+                      >
+                        {[0, 150, 300].map((delay) => (
+                          <span
+                            key={delay}
+                            style={{
+                              width: 4,
+                              borderRadius: 2,
+                              background: "white",
+                              animation: `voiceBar 0.7s ease-in-out ${delay}ms infinite alternate`,
+                            }}
+                          />
+                        ))}
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 size={20} />
+                    Read Question
+                  </>
+                )}
+              </button>
+            </div>
+            {/* ──────────────────────────────────────────────────────────── */}
+
+            {/* Currency wallet */}
             {!isVisualQuestion && <CurrencyWallet images={currencyImages} />}
           </div>
 
@@ -826,7 +988,7 @@ export default function MathGame({
 
           {/* Submit button */}
           <button
-            onClick={handleSubmit}
+            onClick={() => handleSubmit()}
             disabled={isMCQ ? selectedOption === null : wordAnswer === ""}
             className={`w-full py-4 rounded-2xl text-white font-bold text-lg transition
               ${
@@ -838,7 +1000,7 @@ export default function MathGame({
             ✅ Submit Answer
           </button>
 
-          {/* Hint + timer */}
+          {/* Hint + timer row */}
           <div className="flex justify-between items-center">
             <button
               onClick={handleHint}
@@ -874,8 +1036,30 @@ export default function MathGame({
               Attempts so far: {attempts}
             </p>
           )}
+
+          {/* Voice input row */}
+          <div className="flex gap-3">
+            <button
+              onClick={startListening}
+              className={`flex-1 py-3 rounded-xl font-semibold transition ${
+                listening
+                  ? "bg-red-500 text-white"
+                  : "bg-green-100 text-green-700 hover:bg-green-200"
+              }`}
+            >
+              🎤 {listening ? "Listening…" : "Speak Answer"}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Keyframe for the animated speaking bars */}
+      <style>{`
+        @keyframes voiceBar {
+          from { height: 6px; }
+          to   { height: 18px; }
+        }
+      `}</style>
     </div>
   );
 }

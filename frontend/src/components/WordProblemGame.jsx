@@ -6,6 +6,8 @@ import {
   ShoppingBag,
   Star,
   CheckCircle2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 const DJANGO_BASE = "http://localhost:8000";
@@ -55,6 +57,11 @@ const hintArrowStyle = `
     to   { opacity: 1; transform: scale(1) translateY(0); }
   }
   .step-badge { animation: stepFade 0.3s ease-out forwards; }
+
+  @keyframes voiceBar {
+    from { height: 4px; }
+    to   { height: 16px; }
+  }
 `;
 
 function calculateStars(attempts, timeSpent, hintsUsed) {
@@ -195,7 +202,6 @@ function HintLine({ fromRef, toRef, show }) {
     const calcLine = () => {
       const from = fromRef.current.getBoundingClientRect();
       const to = toRef.current.getBoundingClientRect();
-      // Use page coords relative to viewport
       setLine({
         x1: from.left + from.width / 2,
         y1: from.top + from.height / 2,
@@ -227,7 +233,6 @@ function HintLine({ fromRef, toRef, show }) {
         zIndex: 9999,
       }}
     >
-      {/* Glow/shadow line */}
       <line
         x1={line.x1}
         y1={line.y1}
@@ -237,7 +242,6 @@ function HintLine({ fromRef, toRef, show }) {
         strokeWidth="4"
         strokeLinecap="round"
       />
-      {/* Animated dashed line */}
       <line
         x1={line.x1}
         y1={line.y1}
@@ -248,7 +252,6 @@ function HintLine({ fromRef, toRef, show }) {
         strokeLinecap="round"
         className="hint-path"
       />
-      {/* Dot at wallet end */}
       <circle cx={line.x2} cy={line.y2} r="5" fill="#ec4899" opacity="0.9" />
       <circle cx={line.x2} cy={line.y2} r="3" fill="white" opacity="0.9" />
     </svg>
@@ -274,8 +277,11 @@ export default function WordProblemGame({
   const [hintIndices, setHintIndices] = useState([]);
   const [startTime] = useState(Date.now());
 
+  // ── NEW: voice state ───────────────────────────────────────────────────────
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   // Refs for SVG line
-  const coinRefs = useRef({}); // idx → ref
+  const coinRefs = useRef({});
   const walletRef = useRef(null);
   const timerRefs = useRef([]);
 
@@ -292,7 +298,51 @@ export default function WordProblemGame({
     setHintIndices([]);
     timerRefs.current.forEach(clearTimeout);
     timerRefs.current = [];
+    // Stop any speech when question changes
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
   }, [question?.question_id]);
+
+  // Stop speech when component unmounts
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
+
+  // ── NEW: read question aloud (slow, clear, no answer) ─────────────────────
+  const speakQuestion = useCallback((text) => {
+    if (!window.speechSynthesis || !text) return;
+
+    const readable = text
+      .replace(/₹/g, "rupees ")
+      .replace(/\+/g, " plus ")
+      .replace(/\p{Dash}/gu, " minus ")
+      .replace(/×/g, " times ")
+      .replace(/÷/g, " divided by ")
+      .replace(/=/g, " equals ")
+      .replace(/\?/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(readable);
+    utterance.lang = "en-IN";
+    utterance.rate = 0.65;
+    utterance.pitch = 1.1;
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+  }, []);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const target = question?.expected_answer ?? 0;
 
@@ -370,12 +420,10 @@ export default function WordProblemGame({
     }
   };
 
-  // ── Hint: greedy → all coins needed → cycle through them forever ──────────
   const handleHint = () => {
     setShowHint(true);
     setHintsUsed((h) => h + 1);
 
-    // Greedy decomposition
     const sortedDesc = [...uniqueCurrencies].sort((a, b) => b.value - a.value);
     let remaining = target - walletTotal;
     const needed = [];
@@ -392,7 +440,7 @@ export default function WordProblemGame({
 
     setHintIndices(needed);
 
-    const STEP = 2000; // ms per coin
+    const STEP = 2000;
 
     const schedule = (iteration) => {
       needed.forEach((coinIdx, step) => {
@@ -404,7 +452,6 @@ export default function WordProblemGame({
         );
         timerRefs.current.push(t);
       });
-      // schedule next cycle
       const next = setTimeout(
         () => schedule(iteration + 1),
         (iteration + 1) * needed.length * STEP,
@@ -414,7 +461,6 @@ export default function WordProblemGame({
 
     schedule(0);
 
-    // Auto-stop after 15 seconds
     const stop = setTimeout(stopHint, 15000);
     timerRefs.current.push(stop);
   };
@@ -425,7 +471,6 @@ export default function WordProblemGame({
     <>
       <style>{hintArrowStyle}</style>
 
-      {/* SVG dotted line from active coin → wallet */}
       <HintLine
         fromRef={
           hintCurrencyIdx !== null ? coinRefs.current[hintCurrencyIdx] : null
@@ -440,6 +485,29 @@ export default function WordProblemGame({
           <p className="text-base font-black text-pink-800 leading-snug">
             {question.question_text}
           </p>
+
+          {/* ── NEW: Read Question button ──────────────────────────────── */}
+          <div className="flex justify-center mt-3">
+            <button
+              onClick={() =>
+                isSpeaking
+                  ? stopSpeaking()
+                  : speakQuestion(question.question_text)
+              }
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md select-none
+                ${
+                  isSpeaking
+                    ? "bg-blue-500 text-white scale-110 shadow-blue-300"
+                    : "bg-blue-100 text-blue-600 hover:bg-blue-200 hover:scale-110"
+                }`}
+              aria-label={isSpeaking ? "Stop reading" : "Read question aloud"}
+              title={isSpeaking ? "Stop reading" : "Read question aloud"}
+            >
+              {isSpeaking ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+          </div>
+          {/* ──────────────────────────────────────────────────────────── */}
+
           {showHint && (
             <p className="mt-2 text-sm text-pink-600 font-semibold">
               💡 Hint: Find coins/notes that add up to ₹{target}
@@ -550,7 +618,6 @@ export default function WordProblemGame({
             Available Money — Drag to Wallet
           </p>
 
-          {/* Step indicator when hint is active */}
           {hintCurrencyIdx !== null && hintIndices.length > 1 && (
             <div className="step-badge flex justify-center gap-2 mb-3">
               {hintIndices.map((coinIdx, i) => (
@@ -571,7 +638,6 @@ export default function WordProblemGame({
 
           <div className="flex flex-wrap gap-4 justify-center">
             {uniqueCurrencies.map((currency, idx) => {
-              // Ensure a ref exists for every coin
               if (!coinRefs.current[idx]) {
                 coinRefs.current[idx] = { current: null };
               }
@@ -585,10 +651,8 @@ export default function WordProblemGame({
                     coinRefs.current[idx] = { current: el };
                   }}
                 >
-                  {/* Flying emoji */}
                   {isHinted && <span className="fly-emoji">🪙</span>}
 
-                  {/* Coin with glow */}
                   <div className={isHinted ? "coin-glow rounded-full" : ""}>
                     <CurrencyChip
                       currency={currency}
@@ -597,7 +661,6 @@ export default function WordProblemGame({
                     />
                   </div>
 
-                  {/* Bouncing label */}
                   {isHinted && (
                     <p className="hint-label text-xs text-pink-500 font-black mt-2 whitespace-nowrap bg-pink-50 px-2 py-1 rounded-lg border border-pink-200">
                       👉 Add ₹{currency.value}!
