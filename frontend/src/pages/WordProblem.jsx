@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 const TOTAL_LEVELS               = 10;
 const STARS_REQUIRED_TO_UNLOCK   = 10;
-const API_BASE                = "http://localhost:8000";
+const API_BASE                = "https://project-coincious.onrender.com";
 
 export default function WordProblems() {
   const navigate = useNavigate();
@@ -24,7 +24,7 @@ export default function WordProblems() {
   const loadProgressFromBackend = async (name) => {
   try {
     const res = await fetch(
-      `http://localhost:8000/api/progress/load/?name=${encodeURIComponent(name)}`
+      `${import.meta.env.VITE_API}/progress/load/?name=${encodeURIComponent(name)}`
     );
 
     const data = await res.json();
@@ -179,7 +179,7 @@ localStorage.setItem(key, updatedStars);
 
 // Sync to backend
 try {
-  await fetch(`http://localhost:8000/api/progress/update/`, {
+  await fetch(`${import.meta.env.VITE_API}/progress/update/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

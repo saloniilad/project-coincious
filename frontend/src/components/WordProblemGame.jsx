@@ -10,7 +10,7 @@ import {
   VolumeX,
 } from "lucide-react";
 
-const DJANGO_BASE = "http://localhost:8000";
+const DJANGO_BASE = import.meta.env.VITE_IMAGES.replace("/static/currency-images", "");
 
 const hintArrowStyle = `
   @keyframes coinGlow {
