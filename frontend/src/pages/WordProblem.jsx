@@ -7,7 +7,8 @@ import { useNavigate } from "react-router-dom";
 
 const TOTAL_LEVELS               = 10;
 const STARS_REQUIRED_TO_UNLOCK   = 10;
-const API_BASE                = "https://project-coincious.onrender.com";
+const API_BASE = import.meta.env.VITE_API || "https://project-coincious.onrender.com";
+//                                                                                    ^ remove /api
 
 export default function WordProblems() {
   const navigate = useNavigate();
@@ -99,17 +100,17 @@ export default function WordProblems() {
 
       // Reuse same question if level was played before
       const prevRes  = await fetch(
-        `${API_BASE}/api/math/level-question/?name=${encodeURIComponent(profileName)}&module=wordproblems&level=${level}`
+        `${API_BASE}/math/level-question/?name=${encodeURIComponent(profileName)}&module=wordproblems&level=${level}`
       );
       const prevData = await prevRes.json();
 
       let fetchedQuestion = null;
       if (prevData.question_id) {
-        const qRes  = await fetch(`${API_BASE}/api/math/question/by-id/?question_id=${prevData.question_id}`);
+        const qRes  = await fetch(`${API_BASE}/math/question/by-id/?question_id=${prevData.question_id}`);
         const qData = await qRes.json();
         fetchedQuestion = qData.question;
       } else {
-        const qRes  = await fetch(`${API_BASE}/api/math/question/?module=wordproblems&difficulty=${difficulty}`);
+        const qRes  = await fetch(`${API_BASE}/math/question/?module=wordproblems&difficulty=${difficulty}`);
         const qData = await qRes.json();
         fetchedQuestion = qData.question;
       }
@@ -127,7 +128,7 @@ export default function WordProblems() {
       if (fetchedQuestion.currency_ids?.length) {
         const idsParam = fetchedQuestion.currency_ids.join(",");
         fetches.push(
-          fetch(`${API_BASE}/api/currencies/?ids=${idsParam}`)
+          fetch(`${API_BASE}/currencies/?ids=${idsParam}`)
             .then((r) => r.json())
             .then((data) => setCurrencies(data.currencies || []))
         );
@@ -135,7 +136,7 @@ export default function WordProblems() {
 
       if (fetchedQuestion.item_id) {
         fetches.push(
-          fetch(`${API_BASE}/api/items/?ids=${fetchedQuestion.item_id}`)
+          fetch(`${API_BASE}/items/?ids=${fetchedQuestion.item_id}`)
             .then((r) => r.json())
             .then((data) => { if (data.items?.length) setItem(data.items[0]); })
         );
@@ -152,7 +153,7 @@ export default function WordProblems() {
 
   const handleComplete = async (starsEarned, attempts, timeSpent, hintsUsed) => {
     try {
-      await fetch(`${API_BASE}/api/math/attempt/save/`, {
+      await fetch(`${API_BASE}/math/attempt/save/`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
