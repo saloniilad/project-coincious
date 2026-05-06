@@ -13,56 +13,51 @@ const STARS_REQUIRED_TO_UNLOCK = 10;
 export default function Addition() {
   const navigate = useNavigate();
 
-  const [selectedLevel, setSelectedLevel]   = useState(null);
-  const [unlockedLevel, setUnlockedLevel]   = useState(1);
-  const [totalStars, setTotalStars]         = useState(0);
-  const [profileName, setProfileName]       = useState("Student");
- const loadProgressFromBackend = async (name) => {
-  try {
-    const res = await fetch(
-      `${import.meta.env.VITE_API}/progress/load/?name=${encodeURIComponent(name)}`
-    );
+  const [selectedLevel, setSelectedLevel] = useState(null);
+  const [unlockedLevel, setUnlockedLevel] = useState(1);
+  const [totalStars, setTotalStars] = useState(0);
+  const [profileName, setProfileName] = useState("Student");
+  const loadProgressFromBackend = async (name) => {
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API}/progress/load/?name=${encodeURIComponent(name)}`,
+      );
 
-    const data = await res.json();
-    const progress = data.progress || {};
+      const data = await res.json();
+      const progress = data.progress || {};
 
-    Object.entries(progress).forEach(([key, value]) => {
-      localStorage.setItem(key, value);
-    });
+      Object.entries(progress).forEach(([key, value]) => {
+        localStorage.setItem(key, value);
+      });
+    } catch (err) {
+      console.error("Failed loading progress:", err);
+    }
+  };
 
-  } catch (err) {
-    console.error("Failed loading progress:", err);
-  }
-};
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
 
- useEffect(() => {
+    if (storedUser) {
+      setProfileName(storedUser);
 
-  const storedUser = localStorage.getItem("user");
+      loadProgressFromBackend(storedUser).then(() => {
+        let unlocked = 1;
 
-  if (storedUser) {
-    setProfileName(storedUser);
+        for (let i = 1; i <= TOTAL_LEVELS; i++) {
+          const stars =
+            Number(localStorage.getItem(`addition_level_${i}_stars`)) || 0;
 
-    loadProgressFromBackend(storedUser).then(() => {
+          if (stars > 0) {
+            unlocked = i + 1;
+          }
+        }
 
-      let unlocked = 1;
+        setUnlockedLevel(unlocked);
 
-for (let i = 1; i <= TOTAL_LEVELS; i++) {
-  const stars = Number(localStorage.getItem(`addition_level_${i}_stars`)) || 0;
-
-  if (stars > 0) {
-    unlocked = i + 1;
-  }
-}
-
-setUnlockedLevel(unlocked);
-
-      calculateTotalStars();
-
-    });
-
-  }
-
-}, []);
+        calculateTotalStars();
+      });
+    }
+  }, []);
 
   const calculateTotalStars = () => {
     let sum = 0;
@@ -84,24 +79,24 @@ setUnlockedLevel(unlocked);
       { x: 30, y: 25 },
       { x: 40, y: 18 },
       { x: 55, y: 12 },
-      { x: 70, y: 8  },
+      { x: 70, y: 8 },
     ];
     return positions[idx];
   };
 
- const handleLevelComplete = (lvl) => {
-  calculateTotalStars();
+  const handleLevelComplete = (lvl) => {
+    calculateTotalStars();
 
-  const currentUnlocked =
-    Number(localStorage.getItem("addition_unlocked")) || 1;
+    const currentUnlocked =
+      Number(localStorage.getItem("addition_unlocked")) || 1;
 
-  const next = Math.max(currentUnlocked, lvl + 1);
+    const next = Math.max(currentUnlocked, lvl + 1);
 
-  if (next <= TOTAL_LEVELS) {
-    localStorage.setItem("addition_unlocked", next);
-    setUnlockedLevel(next);
-  }
-};
+    if (next <= TOTAL_LEVELS) {
+      localStorage.setItem("addition_unlocked", next);
+      setUnlockedLevel(next);
+    }
+  };
 
   if (selectedLevel) {
     return (
@@ -123,71 +118,60 @@ setUnlockedLevel(unlocked);
       <Navbar profileName={profileName} />
 
       <div className="w-full bg-white shadow-sm border-b">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 md:px-8 py-4 gap-4">
+          {/* LEFT SECTION */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/math")}
+              className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-200 transition text-sm md:text-base"
+            >
+              <ChevronLeft size={18} />
+              Back
+            </button>
 
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 md:px-8 py-4 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-purple-100 flex items-center justify-center text-xl md:text-2xl">
+                ➕
+              </div>
 
-    {/* LEFT SECTION */}
-    <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-xl md:text-3xl font-bold text-gray-800">
+                  Addition
+                </h1>
 
-      <button
-        onClick={() => navigate("/math")}
-        className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-200 transition text-sm md:text-base"
-      >
-        <ChevronLeft size={18}/>
-        Back
-      </button>
+                <p className="text-xs md:text-sm text-gray-500">
+                  Practice addition with fun levels
+                </p>
+              </div>
+            </div>
+          </div>
 
-      <div className="flex items-center gap-3">
+          {/* RIGHT SECTION */}
+          <div className="flex flex-col items-start md:items-end gap-2">
+            <div className="text-sm font-semibold text-gray-600">
+              ⭐ {totalStars} / {TOTAL_LEVELS * 3} Stars
+            </div>
 
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-purple-100 flex items-center justify-center text-xl md:text-2xl">
-          ➕
+            {/* Progress bar */}
+            <div className="w-full md:w-64 bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-purple-500 h-2 transition-all duration-500"
+                style={{
+                  width: `${(totalStars / (TOTAL_LEVELS * 3)) * 100}%`,
+                }}
+              />
+            </div>
+
+            {totalStars >= STARS_REQUIRED_TO_UNLOCK && (
+              <span className="text-green-600 text-xs md:text-sm font-semibold">
+                ✅ Subtraction unlocked
+              </span>
+            )}
+          </div>
         </div>
-
-        <div>
-          <h1 className="text-xl md:text-3xl font-bold text-gray-800">
-            Addition
-          </h1>
-
-          <p className="text-xs md:text-sm text-gray-500">
-            Practice addition with fun levels
-          </p>
-        </div>
-
       </div>
 
-    </div>
-
-
-    {/* RIGHT SECTION */}
-    <div className="flex flex-col items-start md:items-end gap-2">
-
-      <div className="text-sm font-semibold text-gray-600">
-        ⭐ {totalStars} / {TOTAL_LEVELS * 3} Stars
-      </div>
-
-      {/* Progress bar */}
-      <div className="w-full md:w-64 bg-gray-200 rounded-full h-2 overflow-hidden">
-        <div
-          className="bg-purple-500 h-2 transition-all duration-500"
-          style={{
-            width: `${(totalStars / (TOTAL_LEVELS * 3)) * 100}%`
-          }}
-        />
-      </div>
-
-      {totalStars >= STARS_REQUIRED_TO_UNLOCK && (
-        <span className="text-green-600 text-xs md:text-sm font-semibold">
-          ✅ Subtraction unlocked
-        </span>
-      )}
-
-    </div>
-
-  </div>
-
-</div>
-
-    {/* ROAD MAP */}
+      {/* ROAD MAP */}
       <div className="flex justify-center pb-20 px-4">
         <div className="relative w-full h-[90vh]">
           <img
@@ -197,9 +181,11 @@ setUnlockedLevel(unlocked);
           />
 
           {Array.from({ length: TOTAL_LEVELS }, (_, i) => {
-            const level     = i + 1;
-            const pos       = getLevelPos(i);
-            const stars     = Number(localStorage.getItem(`addition_level_${level}_stars`)) || 0;
+            const level = i + 1;
+            const pos = getLevelPos(i);
+            const stars =
+              Number(localStorage.getItem(`addition_level_${level}_stars`)) ||
+              0;
             const isUnlocked = level <= unlockedLevel;
 
             return (
@@ -209,8 +195,8 @@ setUnlockedLevel(unlocked);
                 className={`absolute w-14 h-14 sm:w-16 sm:h-16 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg
                   ${isUnlocked ? "bg-purple-500 cursor-pointer hover:scale-110 transition-transform" : "bg-gray-400"}`}
                 style={{
-                  left:      `${pos.x}%`,
-                  top:       `${pos.y}%`,
+                  left: `${pos.x}%`,
+                  top: `${pos.y}%`,
                   transform: "translate(-50%, -50%)",
                 }}
               >
@@ -226,17 +212,17 @@ setUnlockedLevel(unlocked);
 
           {/* Plane indicator at current unlocked level */}
           {unlockedLevel && (
-              <div
-                className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
-                style={{
-                  left: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).x}%`,
-                  top: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).y}%`,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                ✈️
-              </div>
-            )}
+            <div
+              className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
+              style={{
+                left: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).x}%`,
+                top: `${getLevelPos(Math.min(unlockedLevel, TOTAL_LEVELS) - 1).y}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              ✈️
+            </div>
+          )}
         </div>
       </div>
     </div>
