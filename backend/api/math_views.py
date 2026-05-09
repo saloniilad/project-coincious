@@ -18,6 +18,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 import random
+from ai.predictor import predict_next_difficulty
 
 from .db import (
     get_users_collection,
@@ -243,8 +244,7 @@ def save_level_attempt(request):
         return Response({"error": "Invalid question_id."}, status=status.HTTP_400_BAD_REQUEST)
 
     stars_earned = calculate_stars(attempts, time_spent, hints_used)
-    direction    = performance_direction(stars_earned)
-    next_diff    = step_difficulty(difficulty, direction)
+    next_diff = difficulty
 
     attempts_col = get_level_attempts_collection()
     prev_best_doc = attempts_col.find_one(
@@ -399,3 +399,32 @@ def get_level_question(request):
         {"question_id": None, "difficulty": None},
         status=status.HTTP_200_OK,
     )
+
+@api_view(["POST"])
+def predict_difficulty(request):
+
+    sequence = request.data.get("sequence", [])
+
+    # fallback
+    if len(sequence) < 3:
+
+        return Response({
+            "difficulty": "easy-basic"
+        })
+
+    try:
+
+        difficulty = predict_next_difficulty(sequence)
+
+        return Response({
+            "difficulty": difficulty
+        })
+
+    except Exception as e:
+
+        return Response({
+
+            "difficulty": "easy-basic",
+
+            "error": str(e)
+        })

@@ -43,4 +43,10 @@ urlpatterns = [
     path("currencies/", get_currencies_by_ids, name="get_currencies_by_ids"),
     path("items/",      get_items_by_ids,      name="get_items_by_ids"),
     path('progress/update/', views.update_level_progress, name='update_level_progress'),
+
+    path(
+    'math/predict-difficulty/',
+    math_views.predict_difficulty,
+    name='predict_difficulty'
+),
 ]

@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronLeft, Lightbulb, Clock, Volume2, VolumeX } from "lucide-react";
 import WordProblemGame from "./WordProblemGame";
+import { getNextDifficulty } from "../ai/adaptiveRNN";
 
 const API_BASE = import.meta.env.VITE_API;
 const IMAGE_BASE = import.meta.env.VITE_IMAGES || "http://127.0.0.1:8000";
@@ -443,7 +444,7 @@ export default function MathGame({
             (level === 1
               ? "easy-basic"
               : localStorage.getItem(`${module}_next_difficulty`) ||
-                "easy-basic");
+              "easy-basic");
           setDifficulty(fallbackDiff);
           const freshQ = await fetchFreshQuestion(fallbackDiff);
           await fetchCurrencyImages(freshQ?.currency_ids || []);
@@ -469,14 +470,26 @@ export default function MathGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [module, level, fetchCurrencyImages]);
 
-  const fetchFreshQuestion = async (diff) => {
+  const fetchFreshQuestion = async (diffOverride = null) => {
+
+    const actualDifficulty =
+      diffOverride || difficulty;
+
     const res = await fetch(
-      `${API_BASE}/math/question/?module=${module}&difficulty=${diff}`,
+      `${API_BASE}/math/question/?module=${module}&difficulty=${actualDifficulty}`,
     );
-    if (!res.ok) throw new Error(`No question found for ${module}/${diff}`);
+
+    if (!res.ok)
+      throw new Error(
+        `No question found for ${module}/${actualDifficulty}`
+      );
+
     const data = await res.json();
+
     setQuestion(data.question);
+
     setSavedQuestionId(null);
+
     return data.question;
   };
 
@@ -541,6 +554,43 @@ export default function MathGame({
     const elapsed = getElapsedSeconds();
     const finalAttempts = attempts + 1;
     const stars = calculateStars(finalAttempts, elapsed, hintsUsed);
+    const historyKey = `${module}_history`;
+
+    let history =
+      JSON.parse(localStorage.getItem(historyKey)) || [];
+
+    history.push({
+
+      time_spent: Math.round(elapsed),
+
+      attempts: finalAttempts,
+
+      hints_used: hintsUsed,
+
+      stars_earned: stars
+    });
+
+    history = history.slice(-3);
+
+    localStorage.setItem(
+      historyKey,
+      JSON.stringify(history)
+    );
+    const aiDifficulty =
+      await getNextDifficulty(history);
+
+    console.log(
+      "AI Difficulty:",
+      aiDifficulty
+    );
+
+
+    localStorage.setItem(
+
+      `${module}_next_difficulty`,
+
+      aiDifficulty
+    );
     setStarsEarned(stars);
     setTimeSpent(Math.round(elapsed));
     const currentUser = getProfileName();
@@ -564,9 +614,19 @@ export default function MathGame({
       const data = await res.json();
       const delta = data.delta_stars ?? 0;
       const prevBest = data.previous_best_stars ?? 0;
-      const nextDiff = data.next_difficulty ?? difficulty;
+      const nextDiff = aiDifficulty;
+
+      // SAVE FIRST
+      localStorage.setItem(
+        `${module}_next_difficulty`,
+        nextDiff
+      );
+
+      // UPDATE STATE
       setDifficulty(nextDiff);
-      localStorage.setItem(`${module}_next_difficulty`, nextDiff);
+
+      // IMMEDIATELY LOAD QUESTION
+      await fetchFreshQuestion(nextDiff);
       setDeltaStars(delta);
       setPrevBestStars(prevBest);
       const storageKey = `${module}_level_${level}_stars`;
@@ -892,10 +952,9 @@ export default function MathGame({
                     : speakQuestion(question?.question_text)
                 }
                 className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-base transition-all shadow-md select-none
-                  ${
-                    isSpeaking
-                      ? "bg-blue-500 text-white scale-105 shadow-blue-200"
-                      : "bg-blue-100 text-blue-700 hover:bg-blue-200 hover:scale-105"
+                  ${isSpeaking
+                    ? "bg-blue-500 text-white scale-105 shadow-blue-200"
+                    : "bg-blue-100 text-blue-700 hover:bg-blue-200 hover:scale-105"
                   }`}
                 aria-label={isSpeaking ? "Stop reading" : "Read question aloud"}
               >
@@ -957,10 +1016,9 @@ export default function MathGame({
                   key={idx}
                   onClick={() => handleMCQSelect(opt)}
                   className={`py-2 rounded-2xl text-sm font-bold transition border-2
-                    ${
-                      selectedOption === opt
-                        ? "bg-pink-500 text-white border-pink-500 scale-105"
-                        : "bg-gray-50 text-gray-800 border-gray-200 hover:border-pink-300 hover:bg-pink-50"
+                    ${selectedOption === opt
+                      ? "bg-pink-500 text-white border-pink-500 scale-105"
+                      : "bg-gray-50 text-gray-800 border-gray-200 hover:border-pink-300 hover:bg-pink-50"
                     }`}
                 >
                   ₹{opt}
@@ -991,10 +1049,9 @@ export default function MathGame({
             onClick={() => handleSubmit()}
             disabled={isMCQ ? selectedOption === null : wordAnswer === ""}
             className={`w-full py-4 rounded-2xl text-white font-bold text-lg transition
-              ${
-                (isMCQ ? selectedOption !== null : wordAnswer !== "")
-                  ? "bg-pink-500 hover:bg-pink-600 shadow-md"
-                  : "bg-gray-300 cursor-not-allowed"
+              ${(isMCQ ? selectedOption !== null : wordAnswer !== "")
+                ? "bg-pink-500 hover:bg-pink-600 shadow-md"
+                : "bg-gray-300 cursor-not-allowed"
               }`}
           >
             ✅ Submit Answer
@@ -1006,10 +1063,9 @@ export default function MathGame({
               onClick={handleHint}
               disabled={hintsUsed >= 3}
               className={`flex items-center gap-2 text-sm px-4 py-2 rounded-xl transition
-                ${
-                  hintsUsed < 3
-                    ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                ${hintsUsed < 3
+                  ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
               <Lightbulb size={16} /> Hint ({3 - hintsUsed} left)
@@ -1041,11 +1097,10 @@ export default function MathGame({
           <div className="flex gap-3">
             <button
               onClick={startListening}
-              className={`flex-1 py-3 rounded-xl font-semibold transition ${
-                listening
-                  ? "bg-red-500 text-white"
-                  : "bg-green-100 text-green-700 hover:bg-green-200"
-              }`}
+              className={`flex-1 py-3 rounded-xl font-semibold transition ${listening
+                ? "bg-red-500 text-white"
+                : "bg-green-100 text-green-700 hover:bg-green-200"
+                }`}
             >
               🎤 {listening ? "Listening…" : "Speak Answer"}
             </button>
