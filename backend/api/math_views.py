@@ -1,16 +1,3 @@
-"""
-math_views.py
-=============
-API endpoints for the MathGame component.
-
-Endpoints:
-  GET  /api/math/question/          → fetch a question by module + difficulty
-  POST /api/math/attempt/save/      → save a completed question attempt
-  GET  /api/math/level-stars/       → get best stars per level per module for a user
-  GET  /api/math/level-question/    → get the exact question_id played at a given level
-                                      (so revisiting a level shows the same question)
-"""
-
 import re
 from datetime import datetime
 from bson import ObjectId
@@ -174,6 +161,7 @@ def get_question(request):
     all_matching = list(questions_col.find(query))
 
     if not all_matching:
+        # Fallback: ignore exclude list
         all_matching = list(questions_col.find({
             "module_id": module["_id"],
             "difficulty": difficulty,
@@ -215,6 +203,12 @@ def get_question_by_id(request):
 def save_level_attempt(request):
     """
     POST /api/math/attempt/save/
+
+    Accepts next_difficulty from the frontend (AI predicted).
+    Falls back to current difficulty if not provided.
+
+    FIX: previously next_diff = difficulty always — AI prediction
+    was computed but never stored or returned.
     """
     data        = request.data
     name        = data.get("name", "").strip()
@@ -226,6 +220,11 @@ def save_level_attempt(request):
     hints_used  = int(data.get("hints_used", 0))
     user_answer = data.get("user_answer")
     difficulty  = data.get("difficulty", "easy-basic").strip()
+
+    # Read AI-predicted next difficulty from frontend
+    next_diff = data.get("next_difficulty", difficulty).strip()
+    if next_diff not in DIFFICULTY_STEPS:
+        next_diff = difficulty   # guard against invalid values
 
     if not all([name, module_name, level is not None, question_id]):
         return Response({"error": "name, module, level, question_id are required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -244,7 +243,6 @@ def save_level_attempt(request):
         return Response({"error": "Invalid question_id."}, status=status.HTTP_400_BAD_REQUEST)
 
     stars_earned = calculate_stars(attempts, time_spent, hints_used)
-    next_diff = difficulty
 
     attempts_col = get_level_attempts_collection()
     prev_best_doc = attempts_col.find_one(
@@ -259,17 +257,18 @@ def save_level_attempt(request):
     delta_stars = max(0, stars_earned - previous_best_stars)
 
     attempts_col.insert_one({
-        "user_id":      user["_id"],
-        "module_id":    module["_id"],
-        "level":        int(level),
-        "question_id":  q_oid,
-        "attempts":     attempts,
-        "time_spent":   time_spent,
-        "hints_used":   hints_used,
-        "stars_earned": stars_earned,
-        "user_answer":  user_answer,
-        "difficulty":   difficulty,
-        "created_at":   datetime.utcnow(),
+        "user_id":         user["_id"],
+        "module_id":       module["_id"],
+        "level":           int(level),
+        "question_id":     q_oid,
+        "attempts":        attempts,
+        "time_spent":      time_spent,
+        "hints_used":      hints_used,
+        "stars_earned":    stars_earned,
+        "user_answer":     user_answer,
+        "difficulty":      difficulty,
+        "next_difficulty": next_diff,
+        "created_at":      datetime.utcnow(),
     })
 
     return Response(
@@ -308,10 +307,10 @@ def get_level_stars(request):
         {"$match": {"user_id": user["_id"], "module_id": module["_id"]}},
         {"$sort": {"stars_earned": -1, "created_at": 1}},
         {"$group": {
-            "_id":          "$level",
-            "best_stars":   {"$first": "$stars_earned"},
-            "question_id":  {"$first": "$question_id"},
-            "difficulty":   {"$first": "$difficulty"},
+            "_id":         "$level",
+            "best_stars":  {"$first": "$stars_earned"},
+            "question_id": {"$first": "$question_id"},
+            "difficulty":  {"$first": "$difficulty"},
         }},
         {"$project": {
             "_id":         0,
@@ -331,15 +330,6 @@ def get_level_stars(request):
 def get_level_question(request):
     """
     GET /api/math/level-question/?name=Alice&module=addition&level=1
-
-    Returns the question_id and difficulty from the user's FIRST attempt at
-    this level — but only if that question still exists in the questions
-    collection.  If all previously-played questions have since been deleted,
-    returns { question_id: null, difficulty: null } so the frontend falls back
-    to fetching a fresh question.
-
-    This is the single source of truth for "revisit same question" behaviour.
-    The check happens server-side so the frontend never receives a dead ID.
     """
     name        = request.query_params.get("name", "").strip()
     module_name = request.query_params.get("module", "").strip().lower()
@@ -362,29 +352,22 @@ def get_level_question(request):
     attempts_col  = get_level_attempts_collection()
     questions_col = get_questions_collection()
 
-    # Fetch all attempts for this user/module/level, oldest first.
-    # Walk through them and return the first whose question still exists.
     past_attempts = list(attempts_col.find(
         {
             "user_id":   user["_id"],
             "module_id": module["_id"],
             "level":     int(level),
         },
-        sort=[("created_at", 1)],   # chronological — first play comes first
+        sort=[("created_at", 1)],
     ))
 
     if not past_attempts:
-        # Level has never been played
-        return Response(
-            {"question_id": None, "difficulty": None},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"question_id": None, "difficulty": None}, status=status.HTTP_200_OK)
 
     for attempt in past_attempts:
         q_id = attempt.get("question_id")
         if not q_id:
             continue
-        # Cheap existence check — only fetch _id, no full document
         if questions_col.find_one({"_id": q_id}, {"_id": 1}):
             return Response(
                 {
@@ -394,37 +377,40 @@ def get_level_question(request):
                 status=status.HTTP_200_OK,
             )
 
-    # Every question this user played at this level has been deleted
-    return Response(
-        {"question_id": None, "difficulty": None},
-        status=status.HTTP_200_OK,
-    )
+    return Response({"question_id": None, "difficulty": None}, status=status.HTTP_200_OK)
+
 
 @api_view(["POST"])
 def predict_difficulty(request):
-
+    """
+    POST /api/math/predict-difficulty/
+    
+    Called from adaptiveRNN.js with the full attempt history.
+    Backend uses only the last 3 attempts (rolling window).
+    
+    Requirement:
+      - First 3 attempts: return easy-basic (frontend also enforces this)
+      - After 3 attempts: use LSTM model to predict next difficulty
+      - Rolling window of 3: always uses newest 3 attempts
+    """
     sequence = request.data.get("sequence", [])
+    
+    print(f"\n[DEBUG] Received sequence length: {len(sequence)}")
+    if sequence:
+        print(f"[DEBUG] Sequence details: {sequence}")
 
-    # fallback
+    # Need at least 3 attempts before prediction makes sense
     if len(sequence) < 3:
-
-        return Response({
-            "difficulty": "easy-basic"
-        })
+        print(f"[DEBUG] Not enough attempts yet. Returning easy-basic.")
+        return Response({"difficulty": "easy-basic"})
 
     try:
-
+        print(f"[DEBUG] Calling LSTM model for prediction...")
         difficulty = predict_next_difficulty(sequence)
-
-        return Response({
-            "difficulty": difficulty
-        })
-
+        print(f"[DEBUG] ✓ Prediction result: {difficulty}\n")
+        return Response({"difficulty": difficulty})
     except Exception as e:
-
-        return Response({
-
-            "difficulty": "easy-basic",
-
-            "error": str(e)
-        })
+        print(f"[ERROR] Prediction failed: {str(e)}\n")
+        import traceback
+        traceback.print_exc()
+        return Response({"difficulty": "easy-basic", "error": str(e)})

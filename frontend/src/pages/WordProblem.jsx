@@ -40,19 +40,36 @@ function getDifficulty(level) {
   return DIFFICULTY_CYCLE[(level - 1) % DIFFICULTY_CYCLE.length];
 }
 
+// FIX: Robust helper — finds the highest completed level from localStorage
+// by scanning all keys rather than breaking at the first gap.
+// Mirrors the fix applied to AdditionPage.
+function getHighestCompletedLevel(prefix) {
+  let highest = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(`${prefix}_level_`)) continue;
+    const match = key.match(/_level_(\d+)_stars$/);
+    if (!match) continue;
+    const lvl   = Number(match[1]);
+    const stars = Number(localStorage.getItem(key)) || 0;
+    if (stars > 0 && lvl > highest) highest = lvl;
+  }
+  return highest;
+}
+
 export default function WordProblems() {
   const navigate = useNavigate();
 
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [unlockedLevel, setUnlockedLevel] = useState(1);
-  const [totalStars, setTotalStars] = useState(0);
-  const [profileName, setProfileName] = useState("Student");
-  const [viewingSet, setViewingSet] = useState(0);
+  const [totalStars,    setTotalStars]    = useState(0);
+  const [profileName,   setProfileName]   = useState("Student");
+  const [viewingSet,    setViewingSet]    = useState(0);
 
-  const [question, setQuestion] = useState(null);
-  const [currencies, setCurrencies] = useState([]);
-  const [item, setItem] = useState(null);
-  const [loadingLevel, setLoadingLevel] = useState(false);
+  const [question,      setQuestion]      = useState(null);
+  const [currencies,    setCurrencies]    = useState([]);
+  const [item,          setItem]          = useState(null);
+  const [loadingLevel,  setLoadingLevel]  = useState(false);
 
   const loadProgressFromBackend = async (name) => {
     try {
@@ -69,32 +86,22 @@ export default function WordProblems() {
     }
   };
 
+  // FIX: uses getHighestCompletedLevel — no early-break on gaps
   const recalcUnlocked = () => {
-    let unlocked = 1;
-    let i = 1;
-    while (true) {
-      const stars =
-        Number(localStorage.getItem(`wordproblems_level_${i}_stars`)) || 0;
-      if (stars > 0) {
-        unlocked = i + 1;
-        i++;
-      } else {
-        break;
-      }
-    }
+    const highest  = getHighestCompletedLevel("wordproblems");
+    const unlocked = highest + 1;
     setUnlockedLevel(unlocked);
     return unlocked;
   };
 
+  // FIX: scans all localStorage keys instead of breaking at first zero
   const recalcTotalStars = () => {
     let sum = 0;
-    let i = 1;
-    while (true) {
-      const stars =
-        Number(localStorage.getItem(`wordproblems_level_${i}_stars`)) || 0;
-      if (stars === 0 && i > 1) break;
-      sum += stars;
-      i++;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("wordproblems_level_") && key.endsWith("_stars")) {
+        sum += Number(localStorage.getItem(key)) || 0;
+      }
     }
     setTotalStars(sum);
     return sum;
@@ -180,34 +187,29 @@ export default function WordProblems() {
     }
   };
 
-  const handleComplete = async (
-    starsEarned,
-    attempts,
-    timeSpent,
-    hintsUsed,
-  ) => {
+  const handleComplete = async (starsEarned, attempts, timeSpent, hintsUsed) => {
     try {
       await fetch(`${API_BASE}/math/attempt/save/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: profileName,
-          module: "wordproblems",
-          level: selectedLevel,
+          name:        profileName,
+          module:      "wordproblems",
+          level:       selectedLevel,
           question_id: question.question_id,
           attempts,
-          time_spent: timeSpent,
-          hints_used: hintsUsed,
+          time_spent:  timeSpent,
+          hints_used:  hintsUsed,
           user_answer: question.expected_answer,
-          difficulty: question.difficulty,
+          difficulty:  question.difficulty,
         }),
       });
     } catch (err) {
       console.error("Failed to save attempt:", err);
     }
 
-    const key = `wordproblems_level_${selectedLevel}_stars`;
-    const prev = Number(localStorage.getItem(key)) || 0;
+    const key          = `wordproblems_level_${selectedLevel}_stars`;
+    const prev         = Number(localStorage.getItem(key)) || 0;
     const updatedStars = Math.max(prev, starsEarned);
     localStorage.setItem(key, updatedStars);
 
@@ -217,17 +219,17 @@ export default function WordProblems() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: profileName,
+          name:   profileName,
           module: "wordproblems",
-          level: selectedLevel,
-          stars: updatedStars,
+          level:  selectedLevel,
+          stars:  updatedStars,
         }),
       });
     } catch (err) {
       console.error("Failed syncing word problem progress:", err);
     }
 
-    // Unlock next level — no upper limit
+    // Unlock next level
     const next = selectedLevel + 1;
     if (next > unlockedLevel) {
       localStorage.setItem("wordproblems_unlocked", next);
@@ -246,22 +248,17 @@ export default function WordProblems() {
   };
 
   const setStart = viewingSet * LEVELS_PER_SET + 1;
-  const setEnd = setStart + LEVELS_PER_SET - 1;
-  const maxSet = Math.floor((unlockedLevel - 1) / LEVELS_PER_SET);
+  const setEnd   = setStart + LEVELS_PER_SET - 1;
+  const maxSet   = Math.floor((unlockedLevel - 1) / LEVELS_PER_SET);
 
-  // ── Game screen ────────────────────────────────────────────────────────────
+  // ── Game screen ──────────────────────────────────────────────────────────────
   if (selectedLevel && question) {
     return (
       <div className="min-h-screen bg-[#f3f1ee]">
         <Navbar profileName={profileName} />
         <div className="max-w-2xl mx-auto px-4 pt-6">
           <button
-            onClick={() => {
-              setSelectedLevel(null);
-              setQuestion(null);
-              setCurrencies([]);
-              setItem(null);
-            }}
+            onClick={() => { setSelectedLevel(null); setQuestion(null); setCurrencies([]); setItem(null); }}
             className="mb-4 bg-blue-100 text-blue-700 px-4 py-2 rounded-xl flex items-center gap-2 font-semibold hover:bg-blue-200 transition"
           >
             <ChevronLeft size={16} /> Back to Map
@@ -280,7 +277,7 @@ export default function WordProblems() {
     );
   }
 
-  // ── Loading screen ─────────────────────────────────────────────────────────
+  // ── Loading screen ───────────────────────────────────────────────────────────
   if (loadingLevel) {
     return (
       <div className="min-h-screen bg-[#f3f1ee] flex items-center justify-center">
@@ -292,7 +289,7 @@ export default function WordProblems() {
     );
   }
 
-  // ── Map screen ─────────────────────────────────────────────────────────────
+  // ── Map screen ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#f3f1ee]">
       <Navbar profileName={profileName} />
@@ -305,39 +302,25 @@ export default function WordProblems() {
               onClick={() => navigate("/math")}
               className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-200 transition text-sm md:text-base"
             >
-              <ChevronLeft size={18} />
-              Back
+              <ChevronLeft size={18} /> Back
             </button>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-pink-100 flex items-center justify-center text-xl md:text-2xl">
                 📘
               </div>
               <div>
-                <h1 className="text-xl md:text-3xl font-bold text-gray-800">
-                  Word Problems
-                </h1>
-                <p className="text-xs md:text-sm text-gray-500">
-                  Practice word problems with fun levels
-                </p>
+                <h1 className="text-xl md:text-3xl font-bold text-gray-800">Word Problems</h1>
+                <p className="text-xs md:text-sm text-gray-500">Practice word problems with fun levels</p>
               </div>
             </div>
           </div>
 
           <div className="flex flex-col items-start md:items-end gap-2">
-            <div className="text-sm font-semibold text-gray-600">
-              ⭐ {totalStars} Stars · Level {unlockedLevel}
-            </div>
+            <div className="text-sm font-semibold text-gray-600">⭐ {totalStars} Stars · Level {unlockedLevel}</div>
             <div className="w-full md:w-64 bg-gray-200 rounded-full h-2 overflow-hidden">
               <div
                 className="bg-pink-500 h-2 transition-all duration-500"
-                style={{
-                  width: `${Math.min(
-                    (totalStars /
-                      (Math.max(maxSet, 0) * LEVELS_PER_SET * 3 + 30)) *
-                      100,
-                    100,
-                  )}%`,
-                }}
+                style={{ width: `${Math.min((totalStars / (Math.max(maxSet, 0) * LEVELS_PER_SET * 3 + 30)) * 100, 100)}%` }}
               />
             </div>
           </div>
@@ -353,9 +336,7 @@ export default function WordProblems() {
         >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-sm font-semibold text-gray-600 min-w-[120px] text-center">
-          Levels {setStart} – {setEnd}
-        </span>
+        <span className="text-sm font-semibold text-gray-600 min-w-[120px] text-center">Levels {setStart} – {setEnd}</span>
         <button
           onClick={() => setViewingSet((s) => Math.min(maxSet, s + 1))}
           disabled={viewingSet >= maxSet}
@@ -368,69 +349,45 @@ export default function WordProblems() {
       {/* Road map */}
       <div className="flex justify-center pb-20 px-4">
         <div className="relative w-full h-[90vh]">
-          <img
-            src={roadImg}
-            alt="road"
-            className="absolute inset-0 w-full h-full object-cover rounded-3xl shadow-xl"
-          />
+          <img src={roadImg} alt="road" className="absolute inset-0 w-full h-full object-cover rounded-3xl shadow-xl" />
 
           {Array.from({ length: LEVELS_PER_SET }, (_, i) => {
-            const level = setStart + i;
-            const pos = SET_POSITIONS[i];
-            const stars =
-              Number(
-                localStorage.getItem(`wordproblems_level_${level}_stars`),
-              ) || 0;
+            const level      = setStart + i;
+            const pos        = SET_POSITIONS[i];
+            const stars      = Number(localStorage.getItem(`wordproblems_level_${level}_stars`)) || 0;
             const isUnlocked = level <= unlockedLevel;
 
             return (
               <div
                 key={level}
                 onClick={() => isUnlocked && loadLevel(level)}
-                className={`absolute w-14 h-14 sm:w-16 sm:h-16 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg
-                  ${
-                    isUnlocked
-                      ? "bg-pink-500 cursor-pointer hover:scale-110 transition-transform"
-                      : "bg-gray-400 cursor-not-allowed opacity-60"
-                  }`}
-                style={{
-                  left: `${pos.x}%`,
-                  top: `${pos.y}%`,
-                  transform: "translate(-50%, -50%)",
-                }}
+                className={`absolute w-14 h-14 sm:w-16 sm:h-16 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg ${
+                  isUnlocked
+                    ? "bg-pink-500 cursor-pointer hover:scale-110 transition-transform"
+                    : "bg-gray-400 cursor-not-allowed opacity-60"
+                }`}
+                style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
               >
                 {level}
                 <div className="flex text-yellow-300 text-xs">
-                  {[1, 2, 3].map((s) => (
-                    <span key={s}>{s <= stars ? "★" : "☆"}</span>
-                  ))}
+                  {[1, 2, 3].map((s) => <span key={s}>{s <= stars ? "★" : "☆"}</span>)}
                 </div>
               </div>
             );
           })}
 
-          {/* Plane — only shown if unlocked level is in the current set */}
-          {unlockedLevel >= setStart &&
-            unlockedLevel <= setEnd &&
-            (() => {
-              const idx = Math.min(
-                unlockedLevel - setStart,
-                LEVELS_PER_SET - 1,
-              );
-              const pos = SET_POSITIONS[idx];
-              return (
-                <div
-                  className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
-                  style={{
-                    left: `${pos.x}%`,
-                    top: `${pos.y}%`,
-                    transform: "translate(-50%, -160%)",
-                  }}
-                >
-                  ✈️
-                </div>
-              );
-            })()}
+          {unlockedLevel >= setStart && unlockedLevel <= setEnd && (() => {
+            const idx = Math.min(unlockedLevel - setStart, LEVELS_PER_SET - 1);
+            const pos = SET_POSITIONS[idx];
+            return (
+              <div
+                className="absolute text-4xl sm:text-5xl transition-all duration-1000 pointer-events-none"
+                style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -160%)" }}
+              >
+                ✈️
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
