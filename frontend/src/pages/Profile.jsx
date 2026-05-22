@@ -12,32 +12,48 @@ const MODULES = [
   { name: "wordproblems", label: "Word Problems", icon: "📘" },
 ];
 
-const TOTAL_LEVELS = 10;
+
 const STARS_REQUIRED = 150;
 
 function computeStats(progressMap) {
   let globalStars = 0;
   let globalLevels = 0;
+
   const stats = {};
 
   MODULES.forEach((module) => {
     let stars = 0;
-    let levels = 0;
+    let highestLevel = 1;
 
-    const levelCount = module.name === "wordproblems" ? 10 : TOTAL_LEVELS;
+    Object.keys(progressMap).forEach((key) => {
 
-    for (let i = 1; i <= levelCount; i++) {
-      const key = `${module.name}_level_${i}_stars`;
-      const levelStars = Number(progressMap[key]) || 0;
+      if (
+        key.startsWith(`${module.name}_level_`) &&
+        key.endsWith("_stars")
+      ) {
+        const match = key.match(/_level_(\d+)_stars/);
 
-      stars += levelStars;
-      if (levelStars > 0) levels++;
-    }
+        if (!match) return;
 
-    stats[module.name] = { stars, levels };
+        const level = Number(match[1]);
+
+        const levelStars = Number(progressMap[key]) || 0;
+
+        stars += levelStars;
+
+        if (levelStars > 0 && level >= highestLevel) {
+          highestLevel = level + 1;
+        }
+      }
+    });
+
+    stats[module.name] = {
+      stars,
+      levels: highestLevel,
+    };
 
     globalStars += stars;
-    globalLevels += levels;
+    globalLevels += highestLevel;
   });
 
   const globalScore = globalStars * 3;

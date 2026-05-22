@@ -3,8 +3,6 @@ import { Plus, Minus, X, Divide, Lock, ChevronRight, BookOpen } from "lucide-rea
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 
-const TOTAL_LEVELS    = 10;
-const WP_TOTAL_LEVELS = 5;
 const STARS_TO_UNLOCK = 10;
 
 // Defined OUTSIDE the component
@@ -49,22 +47,45 @@ export default function MathPage() {
     loadStats();
   }, []);
 
-  const calculateModuleStats = (mod, totalLevels = TOTAL_LEVELS) => {
-    let stars = 0, completedLevels = 0;
-    for (let i = 1; i <= totalLevels; i++) {
-      const s = Number(localStorage.getItem(`${mod}_level_${i}_stars`)) || 0;
+ const calculateModuleStats = (mod) => {
+  let stars = 0;
+  let highestLevel = 1;
+
+  Object.keys(localStorage).forEach((key) => {
+
+    if (
+      key.startsWith(`${mod}_level_`) &&
+      key.endsWith("_stars")
+    ) {
+
+      const match = key.match(/_level_(\d+)_stars/);
+
+      if (!match) return;
+
+      const level = Number(match[1]);
+
+      const s = Number(localStorage.getItem(key)) || 0;
+
       stars += s;
-      if (s > 0) completedLevels++;
+
+      if (s > 0 && level >= highestLevel) {
+        highestLevel = level + 1;
+      }
     }
-    return { stars, levels: completedLevels };
+  });
+
+  return {
+    stars,
+    levels: highestLevel,
   };
+};
 
   const loadStats = () => {
     setAdditionStats(calculateModuleStats("addition"));
     setSubtractionStats(calculateModuleStats("subtraction"));
     setMultiplicationStats(calculateModuleStats("multiplication"));
     setDivisionStats(calculateModuleStats("division"));
-    setWordProblemStats(calculateModuleStats("wordproblems", WP_TOTAL_LEVELS));
+    setWordProblemStats(calculateModuleStats("wordproblems"));
   };
 
   const isSubtractionUnlocked    = additionStats.stars       >= STARS_TO_UNLOCK;
