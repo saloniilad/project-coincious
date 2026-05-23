@@ -62,6 +62,8 @@ const hintArrowStyle = `
     from { height: 4px; }
     to   { height: 16px; }
   }
+
+  .touch-dragging { opacity: 0.4; }
 `;
 
 function calculateStars(attempts, timeSpent, hintsUsed) {
@@ -78,8 +80,10 @@ function CurrencyChip({
   currency,
   draggable = false,
   onDragStart,
+  onTouchStart,
   onClick,
   small = false,
+  isDraggingTouch = false,
 }) {
   const isCoin = currency.type === "coin";
   const imgSrc = currency.front_image
@@ -89,7 +93,8 @@ function CurrencyChip({
   const noteSize = small ? "w-20 h-10" : "w-28 h-14";
   const baseClass = `object-contain select-none
     ${draggable ? "cursor-grab active:cursor-grabbing hover:scale-110 transition-transform drop-shadow-md" : ""}
-    ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}`;
+    ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}
+    ${isDraggingTouch ? "touch-dragging" : ""}`;
 
   if (imgSrc)
     return (
@@ -98,6 +103,7 @@ function CurrencyChip({
         alt={`₹${currency.value}`}
         draggable={draggable}
         onDragStart={onDragStart}
+        onTouchStart={onTouchStart}
         onClick={onClick}
         className={`${isCoin ? coinSize : noteSize} ${baseClass}`}
       />
@@ -108,11 +114,13 @@ function CurrencyChip({
       <div
         draggable={draggable}
         onDragStart={onDragStart}
+        onTouchStart={onTouchStart}
         onClick={onClick}
         className={`${coinSize} rounded-full border-4 border-yellow-600 bg-gradient-to-br from-yellow-300 to-yellow-500
         flex items-center justify-center font-bold text-yellow-900 shadow-md select-none
         ${draggable ? "cursor-grab hover:scale-110 transition-transform" : ""}
-        ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}`}
+        ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}
+        ${isDraggingTouch ? "touch-dragging" : ""}`}
       >
         ₹{currency.value}
       </div>
@@ -133,11 +141,13 @@ function CurrencyChip({
     <div
       draggable={draggable}
       onDragStart={onDragStart}
+      onTouchStart={onTouchStart}
       onClick={onClick}
       className={`${noteSize} rounded-lg border-2 bg-gradient-to-r ${colorClass}
         flex items-center justify-center font-bold text-slate-700 shadow-sm select-none
         ${draggable ? "cursor-grab hover:scale-110 transition-transform" : ""}
-        ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}`}
+        ${onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""}
+        ${isDraggingTouch ? "touch-dragging" : ""}`}
     >
       ₹{currency.value}
     </div>
@@ -189,7 +199,6 @@ function StarRow({ count }) {
   );
 }
 
-// ── SVG Dotted Line overlay from coin → wallet ────────────────────────────────
 function HintLine({ fromRef, toRef, show }) {
   const [line, setLine] = useState(null);
 
@@ -198,7 +207,6 @@ function HintLine({ fromRef, toRef, show }) {
       setLine(null);
       return;
     }
-
     const calcLine = () => {
       const from = fromRef.current.getBoundingClientRect();
       const to = toRef.current.getBoundingClientRect();
@@ -209,7 +217,6 @@ function HintLine({ fromRef, toRef, show }) {
         y2: to.top + to.height / 2,
       });
     };
-
     calcLine();
     window.addEventListener("resize", calcLine);
     window.addEventListener("scroll", calcLine, true);
@@ -258,7 +265,6 @@ function HintLine({ fromRef, toRef, show }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function WordProblemGame({
   question,
   currencies,
@@ -276,11 +282,16 @@ export default function WordProblemGame({
   const [hintCurrencyIdx, setHintCurrencyIdx] = useState(null);
   const [hintIndices, setHintIndices] = useState([]);
   const [startTime] = useState(Date.now());
-
-  // ── NEW: voice state ───────────────────────────────────────────────────────
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Refs for SVG line
+  // ── Touch drag state ───────────────────────────────────────────────────────
+  const [touchDrag, setTouchDrag] = useState(null); // { currency, x, y }
+  const [touchDragIdx, setTouchDragIdx] = useState(null); // fades the source coin
+  const touchDragRef = useRef(null);
+  const touchMovedRef = useRef(false); // drag vs tap guard
+  const [walletHighlight, setWalletHighlight] = useState(false);
+  // ──────────────────────────────────────────────────────────────────────────
+
   const coinRefs = useRef({});
   const walletRef = useRef(null);
   const timerRefs = useRef([]);
@@ -298,22 +309,103 @@ export default function WordProblemGame({
     setHintIndices([]);
     timerRefs.current.forEach(clearTimeout);
     timerRefs.current = [];
-    // Stop any speech when question changes
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
   }, [question?.question_id]);
 
-  // Stop speech when component unmounts
   useEffect(() => {
     return () => {
       window.speechSynthesis?.cancel();
     };
   }, []);
 
-  // ── NEW: read question aloud (slow, clear, no answer) ─────────────────────
+  // ── Document-level touch listeners (active only while dragging) ───────────
+  useEffect(() => {
+    if (!touchDrag) return;
+
+    const onTouchMove = (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const drag = touchDragRef.current;
+      if (drag) {
+        const dx = touch.clientX - drag.x;
+        const dy = touch.clientY - drag.y;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) touchMovedRef.current = true;
+      }
+      setTouchDrag((prev) =>
+        prev ? { ...prev, x: touch.clientX, y: touch.clientY } : null,
+      );
+      if (walletRef.current) {
+        const rect = walletRef.current.getBoundingClientRect();
+        setWalletHighlight(
+          touch.clientX >= rect.left &&
+            touch.clientX <= rect.right &&
+            touch.clientY >= rect.top &&
+            touch.clientY <= rect.bottom,
+        );
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      const touch = e.changedTouches[0];
+      const drag = touchDragRef.current;
+      if (drag && !submitted && walletRef.current) {
+        const rect = walletRef.current.getBoundingClientRect();
+        const inWallet =
+          touch.clientX >= rect.left &&
+          touch.clientX <= rect.right &&
+          touch.clientY >= rect.top &&
+          touch.clientY <= rect.bottom;
+        if (inWallet) {
+          const uid = `${drag.currency._id}-${Date.now()}-${Math.random()}`;
+          setWalletItems((prev) => [...prev, { ...drag.currency, uid }]);
+          setWalletTotal((prev) => prev + drag.currency.value);
+          setFeedback(null);
+        }
+      }
+      touchDragRef.current = null;
+      setTouchDrag(null);
+      setTouchDragIdx(null);
+      setWalletHighlight(false);
+    };
+
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onTouchEnd);
+    return () => {
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [touchDrag, submitted]);
+
+  const handleTouchStart = useCallback(
+    (e, currency, idx) => {
+      if (submitted) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const drag = { currency, x: touch.clientX, y: touch.clientY };
+      touchDragRef.current = drag;
+      touchMovedRef.current = false;
+      setTouchDrag(drag);
+      setTouchDragIdx(idx);
+    },
+    [submitted],
+  );
+
+  const handleTapAdd = useCallback(
+    (currency) => {
+      if (submitted) return;
+      if (touchMovedRef.current) return; // was a drag, not a tap
+      const uid = `${currency._id}-${Date.now()}-${Math.random()}`;
+      setWalletItems((prev) => [...prev, { ...currency, uid }]);
+      setWalletTotal((prev) => prev + currency.value);
+      setFeedback(null);
+    },
+    [submitted],
+  );
+  // ──────────────────────────────────────────────────────────────────────────
+
   const speakQuestion = useCallback((text) => {
     if (!window.speechSynthesis || !text) return;
-
     const readable = text
       .replace(/₹/g, "rupees ")
       .replace(/\+/g, " plus ")
@@ -324,16 +416,13 @@ export default function WordProblemGame({
       .replace(/\?/g, "")
       .replace(/\s+/g, " ")
       .trim();
-
     const utterance = new SpeechSynthesisUtterance(readable);
     utterance.lang = "en-IN";
     utterance.rate = 0.65;
     utterance.pitch = 1.1;
-
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
-
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }, []);
@@ -342,7 +431,6 @@ export default function WordProblemGame({
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
   }, []);
-  // ──────────────────────────────────────────────────────────────────────────
 
   const target = question?.expected_answer ?? 0;
 
@@ -368,12 +456,14 @@ export default function WordProblemGame({
     setWalletTotal((prev) => prev + currency.value);
     setFeedback(null);
   };
+
   const removeFromWallet = (uid, value) => {
     if (submitted) return;
     setWalletItems((prev) => prev.filter((c) => c.uid !== uid));
     setWalletTotal((prev) => prev - value);
     setFeedback(null);
   };
+
   const resetWallet = () => {
     if (submitted) return;
     setWalletItems([]);
@@ -423,7 +513,6 @@ export default function WordProblemGame({
   const handleHint = () => {
     setShowHint(true);
     setHintsUsed((h) => h + 1);
-
     const sortedDesc = [...uniqueCurrencies].sort((a, b) => b.value - a.value);
     let remaining = target - walletTotal;
     const needed = [];
@@ -437,17 +526,12 @@ export default function WordProblemGame({
       }
     }
     if (needed.length === 0) needed.push(0);
-
     setHintIndices(needed);
-
     const STEP = 2000;
-
     const schedule = (iteration) => {
       needed.forEach((coinIdx, step) => {
         const t = setTimeout(
-          () => {
-            setHintCurrencyIdx(coinIdx);
-          },
+          () => setHintCurrencyIdx(coinIdx),
           (iteration * needed.length + step) * STEP,
         );
         timerRefs.current.push(t);
@@ -458,9 +542,7 @@ export default function WordProblemGame({
       );
       timerRefs.current.push(next);
     };
-
     schedule(0);
-
     const stop = setTimeout(stopHint, 15000);
     timerRefs.current.push(stop);
   };
@@ -479,14 +561,30 @@ export default function WordProblemGame({
         show={hintCurrencyIdx !== null}
       />
 
+      {/* Floating ghost coin/note that follows the finger during touch drag */}
+      {touchDrag && (
+        <div
+          style={{
+            position: "fixed",
+            left: touchDrag.x - 36,
+            top: touchDrag.y - 36,
+            zIndex: 10000,
+            pointerEvents: "none",
+            opacity: 0.85,
+            transform: "scale(1.25)",
+            filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.3))",
+          }}
+        >
+          <CurrencyChip currency={touchDrag.currency} />
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-5">
         {/* Question banner */}
         <div className="bg-gradient-to-r from-amber-100 to-pink-100 border-2 border-pink-200 rounded-2xl px-5 py-4 text-center">
           <p className="text-base font-black text-pink-800 leading-snug">
             {question.question_text}
           </p>
-
-          {/* ── NEW: Read Question button ──────────────────────────────── */}
           <div className="flex justify-center mt-3">
             <button
               onClick={() =>
@@ -506,8 +604,6 @@ export default function WordProblemGame({
               {isSpeaking ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
           </div>
-          {/* ──────────────────────────────────────────────────────────── */}
-
           {showHint && (
             <p className="mt-2 text-sm text-pink-600 font-semibold">
               💡 Hint: Find coins/notes that add up to ₹{target}
@@ -545,12 +641,14 @@ export default function WordProblemGame({
                 ${
                   submitted
                     ? "border-slate-200 bg-slate-50"
-                    : "border-blue-200 bg-blue-50/60 hover:border-blue-400 hover:bg-blue-50"
+                    : walletHighlight
+                      ? "border-blue-500 bg-blue-100 scale-[1.02]"
+                      : "border-blue-200 bg-blue-50/60 hover:border-blue-400 hover:bg-blue-50"
                 }`}
             >
               {walletItems.length === 0 ? (
-                <div className="w-full h-full flex items-center justify-center text-blue-300 text-xs font-bold select-none">
-                  Drag coins / notes here
+                <div className="w-full h-full flex items-center justify-center text-blue-300 text-xs font-bold select-none text-center px-2">
+                  Drag or tap coins / notes here
                 </div>
               ) : (
                 walletItems.map((c) => (
@@ -560,7 +658,7 @@ export default function WordProblemGame({
                       <button
                         onClick={() => removeFromWallet(c.uid, c.value)}
                         className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full
-                          flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                          flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -574,13 +672,7 @@ export default function WordProblemGame({
               <span className="text-xs font-black text-slate-500">Total</span>
               <span
                 className={`text-2xl font-black transition-colors
-                ${
-                  walletTotal === target
-                    ? "text-emerald-600"
-                    : walletTotal > target
-                      ? "text-red-500"
-                      : "text-blue-600"
-                }`}
+                ${walletTotal === target ? "text-emerald-600" : walletTotal > target ? "text-red-500" : "text-blue-600"}`}
               >
                 ₹{walletTotal}
               </span>
@@ -615,7 +707,7 @@ export default function WordProblemGame({
         {/* Available money tray */}
         <div className="bg-white rounded-2xl border-2 border-slate-100 p-4 shadow-sm">
           <p className="text-xs font-black text-slate-400 uppercase tracking-widest text-center mb-4">
-            Available Money — Drag to Wallet
+            Available Money — Drag or Tap to Wallet
           </p>
 
           {hintCurrencyIdx !== null && hintIndices.length > 1 && (
@@ -638,10 +730,10 @@ export default function WordProblemGame({
 
           <div className="flex flex-wrap gap-4 justify-center">
             {uniqueCurrencies.map((currency, idx) => {
-              if (!coinRefs.current[idx]) {
+              if (!coinRefs.current[idx])
                 coinRefs.current[idx] = { current: null };
-              }
               const isHinted = hintCurrencyIdx === idx;
+              const isTouchDraggingThis = touchDragIdx === idx;
 
               return (
                 <div
@@ -652,15 +744,16 @@ export default function WordProblemGame({
                   }}
                 >
                   {isHinted && <span className="fly-emoji">🪙</span>}
-
                   <div className={isHinted ? "coin-glow rounded-full" : ""}>
                     <CurrencyChip
                       currency={currency}
                       draggable={!submitted}
                       onDragStart={(e) => handleDragStart(e, currency)}
+                      onTouchStart={(e) => handleTouchStart(e, currency, idx)}
+                      onClick={() => handleTapAdd(currency)}
+                      isDraggingTouch={isTouchDraggingThis}
                     />
                   </div>
-
                   {isHinted && (
                     <p className="hint-label text-xs text-pink-500 font-black mt-2 whitespace-nowrap bg-pink-50 px-2 py-1 rounded-lg border border-pink-200">
                       👉 Add ₹{currency.value}!
