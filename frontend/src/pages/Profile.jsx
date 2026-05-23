@@ -133,7 +133,7 @@ export default function Profile() {
 
           <button
             onClick={() => setShowChangePassword(true)}
-            className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+            className="mt-4 px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600"
           >
             Change Password
           </button>
@@ -201,7 +201,7 @@ export default function Profile() {
 
                     <div className="w-full bg-yellow-100 h-3 rounded-full overflow-hidden">
                       <div
-                        className="bg-orange-500 h-3 transition-all duration-500"
+                        className="bg-pink-500 h-3 transition-all duration-500"
                         style={{ width: `${Math.min(progress, 100)}%` }}
                       />
                     </div>

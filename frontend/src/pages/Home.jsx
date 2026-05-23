@@ -3,20 +3,18 @@ import { ChevronRight } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
 
-const MODULES      = ["addition", "subtraction", "multiplication", "division", "wordproblems"];
-const TOTAL_LEVELS = 10;
-const WP_LEVELS    = 5;
-const STARS_TO_UNLOCK = 10;
+const MODULES = ["addition", "subtraction", "multiplication", "division", "wordproblems"];
 
+const STARS_TO_UNLOCK = 10;
 export default function Home() {
   const navigate = useNavigate();
-  const [profileName,           setProfileName]           = useState("Student");
-  const [totalStars,            setTotalStars]            = useState(0);
-  const [totalScore,            setTotalScore]            = useState(0);
-  const [additionStars,         setAdditionStars]         = useState(0);
-  const [subtractionStars,      setSubtractionStars]      = useState(0);
-  const [multiplicationStars,   setMultiplicationStars]   = useState(0);
-  const [divisionStars,         setDivisionStars]         = useState(0);
+  const [profileName, setProfileName] = useState("Student");
+  const [totalStars, setTotalStars] = useState(0);
+  const [totalScore, setTotalScore] = useState(0);
+  const [additionStars, setAdditionStars] = useState(0);
+  const [subtractionStars, setSubtractionStars] = useState(0);
+  const [multiplicationStars, setMultiplicationStars] = useState(0);
+  const [divisionStars, setDivisionStars] = useState(0);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -28,36 +26,56 @@ export default function Home() {
   }, []);
 
   const calculateStats = () => {
-    let stars = 0, score = 0;
-    MODULES.forEach((mod) => {
-      const levels = mod === "wordproblems" ? WP_LEVELS : TOTAL_LEVELS;
-      for (let i = 1; i <= levels; i++) {
-        const s = Number(localStorage.getItem(`${mod}_level_${i}_stars`)) || 0;
+    let stars = 0;
+    let score = 0;
+
+    let addStars = 0;
+    let subStars = 0;
+    let mulStars = 0;
+    let divStars = 0;
+
+    Object.keys(localStorage).forEach((key) => {
+
+      if (key.endsWith("_stars")) {
+
+        const s = Number(localStorage.getItem(key)) || 0;
+
         stars += s;
         score += s * 3;
+
+        if (key.startsWith("addition_level_")) {
+          addStars += s;
+        }
+
+        if (key.startsWith("subtraction_level_")) {
+          subStars += s;
+        }
+
+        if (key.startsWith("multiplication_level_")) {
+          mulStars += s;
+        }
+
+        if (key.startsWith("division_level_")) {
+          divStars += s;
+        }
       }
     });
-
-    let addStars = 0, subStars = 0, mulStars = 0, divStars = 0;
-    for (let i = 1; i <= TOTAL_LEVELS; i++) {
-      addStars += Number(localStorage.getItem(`addition_level_${i}_stars`))       || 0;
-      subStars += Number(localStorage.getItem(`subtraction_level_${i}_stars`))    || 0;
-      mulStars += Number(localStorage.getItem(`multiplication_level_${i}_stars`)) || 0;
-      divStars += Number(localStorage.getItem(`division_level_${i}_stars`))       || 0;
-    }
 
     setAdditionStars(addStars);
     setSubtractionStars(subStars);
     setMultiplicationStars(mulStars);
     setDivisionStars(divStars);
+
     setTotalStars(stars);
     setTotalScore(score);
   };
 
-  const isSubtractionUnlocked    = additionStars       >= STARS_TO_UNLOCK;
-  const isMultiplicationUnlocked = subtractionStars    >= STARS_TO_UNLOCK;
-  const isDivisionUnlocked       = multiplicationStars >= STARS_TO_UNLOCK;
-  const isWordProblemsUnlocked   = divisionStars        >= STARS_TO_UNLOCK;
+
+
+  const isSubtractionUnlocked = additionStars >= STARS_TO_UNLOCK;
+  const isMultiplicationUnlocked = subtractionStars >= STARS_TO_UNLOCK;
+  const isDivisionUnlocked = multiplicationStars >= STARS_TO_UNLOCK;
+  const isWordProblemsUnlocked = divisionStars >= STARS_TO_UNLOCK;
 
   return (
     <div className="min-h-screen bg-[#f3f1ee]">
@@ -115,26 +133,52 @@ export default function Home() {
             <p className="text-gray-500 mb-4">
               5 modules: Addition, Subtraction, Multiplication, Division & Word Problems!
             </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="bg-pink-500 text-white text-xs px-3 py-1 rounded-full">
-                Addition
-              </span>
-              <span className={`text-xs px-3 py-1 rounded-full ${isSubtractionUnlocked ? "bg-green-100" : "border"}`}>
-                {isSubtractionUnlocked ? "Subtraction" : "🔒 Subtraction"}
-              </span>
-              <span className={`text-xs px-3 py-1 rounded-full ${isMultiplicationUnlocked ? "bg-green-100" : "border"}`}>
-                {isMultiplicationUnlocked ? "Multiplication" : "🔒 Multiplication"}
-              </span>
-              <span className={`text-xs px-3 py-1 rounded-full ${isDivisionUnlocked ? "bg-green-100" : "border"}`}>
-                {isDivisionUnlocked ? "Division" : "🔒 Division"}
-              </span>
-              {/* ── Word Problems badge — now tracks divisionStars ── */}
-              <span className={`text-xs px-3 py-1 rounded-full ${isWordProblemsUnlocked ? "bg-orange-100" : "border"}`}>
-                {isWordProblemsUnlocked ? "📘 Word Problems" : "🔒 Word Problems"}
-              </span>
-            </div>
-          </div>
+          <div className="flex flex-wrap gap-3">
+            <span className="bg-pink-500 text-white text-xs px-3 py-1 rounded-full">
+              Addition
+            </span>
 
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${isSubtractionUnlocked
+                  ? "bg-pink-500 text-white"
+                  : "bg-green-100 text-black"
+                }`}
+            >
+              {isSubtractionUnlocked ? "Subtraction" : "🔒 Subtraction"}
+            </span>
+
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${isMultiplicationUnlocked
+                  ? "bg-pink-500 text-white"
+                  : "bg-green-100 text-black"
+                }`}
+            >
+              {isMultiplicationUnlocked
+                ? "Multiplication"
+                : "🔒 Multiplication"}
+            </span>
+
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${isDivisionUnlocked
+                  ? "bg-pink-500 text-white"
+                  : "bg-green-100 text-black"
+                }`}
+            >
+              {isDivisionUnlocked ? "Division" : "🔒 Division"}
+            </span>
+
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${isWordProblemsUnlocked
+                  ? "bg-pink-500 text-white"
+                  : "bg-green-100 text-black"
+                }`}
+            >
+              {isWordProblemsUnlocked
+                ? " Word Problems"
+                : "🔒 Word Problems"}
+            </span>
+          </div>
+          </div>
         </div>
       </div>
     </div>
