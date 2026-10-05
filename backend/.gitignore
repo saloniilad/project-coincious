@@ -29,3 +29,6 @@ Also make sure your **React project** `.gitignore` (in the root folder) already 
 node_modules/
 .env
 .env.local
+compare.py
+ai/predictor_keras.py
+ai/export_weights.py
